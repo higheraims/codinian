@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codinian"
+dynamic = ["version"]
+description = "GUI tool for managing repositories, issues and Claude Code sessions"
+license = "GPL-3.0-only"
+license-files = ["LICENSE"]
+authors = [{name = "higheraims", email = "122185704+higheraims@users.noreply.github.com"}]
+requires-python = ">=3.12"
+dependencies = ["aiohttp", "claude-agent-sdk", "qrcode"]
+
+[project.urls]
+Homepage = "https://github.com/higheraims/codinian"
+Issues = "https://github.com/higheraims/codinian/issues"
+
+# Read from __init__.py, so the sidebar's "Codinian 0.1.0" and the package
+# agree and there is one place to bump (ISSUE-030).
+[tool.setuptools.dynamic]
+version = {attr = "version.__version__"}
+
+[tool.setuptools.package-data]
+"remote.static" = ["*.html", "*.css", "*.js"]

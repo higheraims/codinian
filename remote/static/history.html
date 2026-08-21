@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Codinian — History</title>
+<link rel="icon" href="codinian.svg">
+<link rel="stylesheet" href="styles.css">
+<script>
+  // Stamped before first paint, so the page never flashes the wrong palette.
+  // ?theme=dark|light sets data-theme; with no parameter nothing is set and the
+  // prefers-color-scheme query decides, which is what "system" means. The
+  // desktop passes this on the pane URL; see theme.py (ISSUE-030).
+  (function () {
+    var t = new URLSearchParams(location.search).get('theme');
+    if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t;
+  })();
+</script>
+</head>
+<body>
+
+<div id="app">
+  <header id="topbar">
+    <div class="brand">
+      <img class="brand-mark" src="codinian.svg" alt="" width="26" height="26">
+      <span>History</span>
+    </div>
+    <div id="conn-status" class="conn-status" role="status">every conversation on this machine</div>
+  </header>
+
+  <div class="history-view">
+    <form id="search-form" class="history-search">
+      <input id="search-input" type="search" autocomplete="off" autofocus
+             placeholder="Search every stored transcript&hellip;">
+      <button id="search-go" type="submit">Search</button>
+    </form>
+
+    <div id="search-scope" class="history-scope" hidden></div>
+    <div id="search-status" class="history-status">
+      Type something you remember: a filename, an error, a phrase from the conversation.
+    </div>
+    <div id="search-results" class="history-results"></div>
+  </div>
+</div>
+
+<div id="unauthorized-screen" class="unauthorized-screen" hidden>
+  <div class="unauthorized-box">
+    <h1>Access token required</h1>
+    <p>This link needs a valid access token. The current one is in the desktop app, on the Remote access tab in Settings.</p>
+  </div>
+</div>
+
+<script src="history.js"></script>
+</body>
+</html>

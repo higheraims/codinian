@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Codinian — Projects</title>
+<link rel="icon" href="codinian.svg">
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="project.css">
+<script>
+  // Stamped before first paint, so the page never flashes the wrong palette.
+  // ?theme=dark|light sets data-theme; with no parameter nothing is set and the
+  // prefers-color-scheme query decides, which is what "system" means. The
+  // desktop passes this on the pane URL; see theme.py (ISSUE-030).
+  (function () {
+    var t = new URLSearchParams(location.search).get('theme');
+    if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t;
+  })();
+</script>
+</head>
+<body>
+
+<div id="app">
+  <header id="topbar">
+    <a id="brand-link" class="brand" href="project.html" style="text-decoration:none;color:inherit;">
+      <img class="brand-mark" src="codinian.svg" alt="" width="26" height="26">
+      <span>Codinian</span>
+    </a>
+    <div id="project-breadcrumb" class="project-breadcrumb"></div>
+  </header>
+
+  <div id="global-notice" hidden>
+    <span id="global-notice-text"></span>
+    <button id="global-notice-close" type="button" aria-label="Dismiss">&times;</button>
+  </div>
+
+  <div id="project-list-view" class="view">
+    <div class="view-header">
+      <h1>Projects</h1>
+    </div>
+    <div class="project-add-row">
+      <input id="project-add-path" class="project-add-input" type="text" placeholder="/absolute/path/to/project" autocomplete="off">
+      <button id="project-add-btn" class="project-add-btn" type="button">Add project</button>
+    </div>
+    <div id="project-add-error" class="form-error" hidden></div>
+    <div id="project-cards" class="project-cards"></div>
+  </div>
+
+  <div id="project-workspace-view" class="view" hidden>
+    <nav id="tab-nav" class="tab-nav">
+      <button class="tab-btn" data-tab="files" type="button">Files</button>
+      <button class="tab-btn" data-tab="issues" type="button">Issues</button>
+      <button class="tab-btn" data-tab="git" type="button">Git</button>
+      <button class="tab-btn" data-tab="sessions" type="button">Sessions</button>
+    </nav>
+    <div id="tab-files" class="tab-panel"></div>
+    <div id="tab-issues" class="tab-panel"></div>
+    <div id="tab-git" class="tab-panel"></div>
+    <div id="tab-sessions" class="tab-panel"></div>
+  </div>
+</div>
+
+<div id="unauthorized-screen" class="unauthorized-screen" hidden>
+  <div class="unauthorized-box">
+    <h1>Access token required</h1>
+    <p>This link needs a valid access token. The current one is in the desktop app, under the Remote Access button (the toolbar button with a server icon).</p>
+  </div>
+</div>
+
+<script src="project.js"></script>
+</body>
+</html>

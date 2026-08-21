@@ -1,0 +1,1614 @@
+/* Codinian transcript UI, shared by the WebKitGTK pane and the browser client.
+
+   Theme (ISSUE-030): the light palette is defined on bare :root, so every
+   colour has a value before any media query or attribute is consulted. The dark
+   palette is then applied twice, and both are needed:
+
+     - under prefers-color-scheme, guarded so an explicit light choice wins;
+     - under [data-theme="dark"], which the page sets from the `theme=` URL
+       parameter when the user has picked a side rather than following the
+       desktop.
+
+   No colour is defined only inside the dark block. Without the guard on the
+   media query, choosing light on a dark desktop would leave the page dark. */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  /* Tells the engine which way the page is painted, so the controls it draws
+     itself -- select menulists, their popups, scrollbars -- match. Without it
+     WebKitGTK paints a select with the native light background while honouring
+     our colour, which in the dark palette is near-white text on near-white
+     (ISSUE-031). */
+  color-scheme: light;
+
+  --bg:            #f5f5f7;
+  --surface:       #ffffff;
+  --surface-2:     #eef0f4;
+  --border:        #dcdfe6;
+  --text:          #1c1e26;
+  --text-muted:    #6b7080;
+  --text-faint:    #9298a8;
+
+  --accent:        #3b6fd6;
+  --accent-fg:     #ffffff;
+
+  --bubble-assistant: #eef0f4;
+  --bubble-user:      #dfeaff;
+  --bubble-assistant-fg: #1c1e26;
+  --bubble-user-fg:      #123064;
+
+  --green:  #1f8a4c;
+  --green-bg: #e4f6ea;
+  --amber:  #a6650a;
+  --amber-bg: #fdf1dc;
+  --red:    #c23b3b;
+  --red-bg: #fbe6e6;
+  --blue:   #3b6fd6;
+  --blue-bg: #e6edfb;
+  --grey:   #8a8f9c;
+  --grey-bg: #eceef2;
+
+  --code-bg: #f0f1f5;
+  --code-fg: #1c1e26;
+  --code-border: #dcdfe6;
+
+  --radius: 10px;
+  --radius-sm: 6px;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  /* Prose -- assistant messages and thinking -- is set in a serif, the way the
+     Claude apps set it. Everything else (labels, tool cards, chrome) stays in
+     the UI sans, so the reading matter is the part that looks like reading. */
+  --font-serif: Charter, "Bitstream Charter", "Iowan Old Style", "Source Serif 4",
+                "Noto Serif", "Liberation Serif", Georgia, serif;
+  --focus-ring: #3b6fd6;
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2 4.5 6 8.5 10 4.5' fill='none' stroke='%236b7080' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --bg:            #16171d;
+    --surface:       #1d1f27;
+    --surface-2:     #262933;
+    --border:        #343846;
+    --text:          #e4e6ee;
+    --text-muted:    #9298a8;
+    --text-faint:    #6b7080;
+
+    --accent:        #7aa2f7;
+    --accent-fg:     #0c1220;
+
+    --bubble-assistant: #262933;
+    --bubble-user:      #253a5e;
+    --bubble-assistant-fg: #e4e6ee;
+    --bubble-user-fg:      #d7e4ff;
+
+    --green:  #7fd99a;
+    --green-bg: #16301f;
+    --amber:  #f0b85c;
+    --amber-bg: #3a2a0e;
+    --red:    #f28b8b;
+    --red-bg: #3a1c1c;
+    --blue:   #7aa2f7;
+    --blue-bg: #1c2740;
+    --grey:   #9298a8;
+    --grey-bg: #262933;
+
+    --code-bg: #12131a;
+    --code-fg: #e4e6ee;
+    --code-border: #343846;
+
+    --focus-ring: #7aa2f7;
+    --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2 4.5 6 8.5 10 4.5' fill='none' stroke='%239298a8' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+}
+
+/* The same palette, chosen explicitly rather than inherited from the
+   desktop. Set by the page from ?theme=dark; see theme.py. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg:            #16171d;
+  --surface:       #1d1f27;
+  --surface-2:     #262933;
+  --border:        #343846;
+  --text:          #e4e6ee;
+  --text-muted:    #9298a8;
+  --text-faint:    #6b7080;
+
+  --accent:        #7aa2f7;
+  --accent-fg:     #0c1220;
+
+  --bubble-assistant: #262933;
+  --bubble-user:      #253a5e;
+  --bubble-assistant-fg: #e4e6ee;
+  --bubble-user-fg:      #d7e4ff;
+
+  --green:  #7fd99a;
+  --green-bg: #16301f;
+  --amber:  #f0b85c;
+  --amber-bg: #3a2a0e;
+  --red:    #f28b8b;
+  --red-bg: #3a1c1c;
+  --blue:   #7aa2f7;
+  --blue-bg: #1c2740;
+  --grey:   #9298a8;
+  --grey-bg: #262933;
+
+  --code-bg: #12131a;
+  --code-fg: #e4e6ee;
+  --code-border: #343846;
+
+  --focus-ring: #7aa2f7;
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2 4.5 6 8.5 10 4.5' fill='none' stroke='%239298a8' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+html, body { height: 100%; }
+
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  overflow-x: hidden;
+}
+
+button, input, textarea { font: inherit; color: inherit; }
+
+/* Every <select> on either page (ISSUE-031).
+
+   WebKitGTK paints a select as a native menulist and ignores the background we
+   give it, while still honouring the colour. On the dark palette that is
+   near-white text on the native light widget, which is unreadable until the
+   dropdown is opened. `color-scheme` above does not change it, so take the
+   painting over entirely. That also removes the native arrow, hence
+   --select-arrow, which is a palette entry because a data: URI cannot refer to
+   currentColor.
+
+   Rules that style a specific select must use `background-color`, not the
+   `background` shorthand, or they reset the arrow to none. */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: var(--surface-2);
+  background-image: var(--select-arrow);
+  background-repeat: no-repeat;
+  background-position: right .5rem center;
+  background-size: .7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: .3rem 1.7rem .3rem .5rem;
+}
+/* The popup list is still drawn by the engine; say what it should look like
+   rather than inheriting the page's colour onto a native background. */
+select option {
+  background-color: var(--surface);
+  color: var(--text);
+}
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+
+#app {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+#app[hidden] { display: none; }
+
+/* ---------- unauthorized screen ---------- */
+
+.unauthorized-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  padding: 2rem;
+}
+.unauthorized-screen[hidden] { display: none; }
+
+.unauthorized-box {
+  max-width: 420px;
+  text-align: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.75rem 1.5rem;
+}
+.unauthorized-box h1 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: .6rem;
+}
+.unauthorized-box p {
+  font-size: .88rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* ---------- topbar ---------- */
+
+#topbar {
+  flex-shrink: 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: .6rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+}
+.brand { display: flex; align-items: center; gap: .5rem; font-weight: 600; }
+/* The app's mark (ISSUE-021). Larger than the line icon it replaced: this is a
+   drawing of a wreath, and below about 24px the leaves collapse into a blur. */
+.brand-mark { width: 26px; height: 26px; display: block; flex: none; }
+#sidebar-toggle {
+  display: none;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: .35rem;
+  align-items: center;
+  justify-content: center;
+}
+.conn-status {
+  margin-left: auto;
+  font-size: .78rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+}
+.conn-status::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--grey);
+}
+.conn-status.is-open::before { background: var(--green); }
+.conn-status.is-error::before { background: var(--red); }
+.conn-status.is-mock::before { background: var(--amber); }
+
+/* ---------- approval inbox (ISSUE-010) ---------- */
+
+.inbox-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: .35rem .45rem;
+}
+.inbox-toggle:disabled { opacity: .4; cursor: default; }
+.inbox-toggle.has-items { border-color: var(--amber); color: var(--amber); }
+.inbox-count {
+  position: absolute;
+  top: -.4rem;
+  right: -.4rem;
+  min-width: 1.1rem;
+  height: 1.1rem;
+  padding: 0 .25rem;
+  border-radius: 999px;
+  background: var(--amber);
+  color: #1c1e26;
+  font-size: .68rem;
+  font-weight: 700;
+  line-height: 1.1rem;
+  text-align: center;
+}
+.inbox-count:empty { display: none; }
+
+.inbox-panel {
+  position: fixed;
+  top: 3.1rem;
+  right: 1rem;
+  z-index: 30;
+  width: min(26rem, calc(100vw - 2rem));
+  max-height: min(28rem, calc(100vh - 5rem));
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .2);
+  overflow: hidden;
+}
+.inbox-panel[hidden] { display: none; }
+.inbox-panel-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: .6rem .8rem;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  font-size: .86rem;
+}
+.inbox-panel-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: .15rem .4rem;
+}
+.inbox-panel-close:hover { color: var(--text); }
+
+.inbox-list {
+  overflow-y: auto;
+  min-height: 0;
+  padding: .5rem;
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+}
+
+.inbox-row {
+  border: 1px solid var(--amber);
+  background: var(--amber-bg);
+  border-radius: var(--radius-sm);
+  padding: .55rem .65rem;
+}
+.inbox-row-head {
+  display: flex;
+  align-items: baseline;
+  gap: .5rem;
+  flex-wrap: wrap;
+  margin-bottom: .4rem;
+}
+.inbox-row-session {
+  background: none;
+  border: none;
+  padding: 0;
+  font-weight: 600;
+  font-size: .84rem;
+  color: var(--amber);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.inbox-row-tool {
+  font-family: var(--font-mono);
+  font-size: .78rem;
+  color: var(--text-muted);
+}
+.inbox-row-body { margin-bottom: .5rem; }
+.inbox-row-body .code-block { background: var(--surface); max-height: 12rem; }
+.inbox-row .approval-actions { margin-top: 0; }
+
+/* ---------- layout ---------- */
+
+#layout {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+#sidebar-backdrop { display: none; }
+
+#sidebar {
+  width: 300px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  min-height: 0;
+}
+.sidebar-header {
+  padding: .85rem 1rem .5rem;
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.empty-note { padding: 1.25rem 1rem; color: var(--text-muted); font-size: .88rem; }
+
+.session-row {
+  padding: .65rem 1rem;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  border-bottom: 1px solid var(--border);
+}
+.session-row:hover { background: var(--surface-2); }
+.session-row.active { background: var(--surface-2); border-left-color: var(--accent); }
+.session-row-top { display: flex; align-items: center; gap: .5rem; min-width: 0; }
+.session-name {
+  font-weight: 500;
+  font-size: .92rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+/* Kept out of the way until the row is under the pointer or the keyboard is
+   on it: the sidebar is a list to read, and a pencil on every line reads as an
+   editor. It still holds its space, so the name does not shift when it
+   appears. */
+.session-rename {
+  margin-left: auto;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: .85rem;
+  line-height: 1;
+  padding: .15rem .25rem;
+  border-radius: var(--radius-sm);
+  opacity: 0;
+}
+.session-row:hover .session-rename,
+.session-rename:focus-visible { opacity: 1; }
+.session-rename:hover { color: var(--text); background: var(--surface); }
+/* There is no hover on a phone, and a control that only appears on hover is a
+   control a phone does not have. Shown, but quietly. */
+@media (hover: none) {
+  .session-rename { opacity: .65; }
+}
+/* Same treatment as rename: present but quiet, and only while the row is
+   under the pointer. The times sign is a shade larger than the pencil so the
+   two read as different actions rather than one pair. */
+.session-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.05rem;
+  line-height: 1;
+  padding: .05rem .3rem;
+  border-radius: var(--radius-sm);
+  opacity: 0;
+}
+.session-row:hover .session-close,
+.session-close:focus-visible { opacity: 1; }
+.session-close:hover { color: var(--red); background: var(--red-bg); }
+@media (hover: none) {
+  .session-close { opacity: .65; }
+}
+
+/* The question asked in the row itself, once the close button is pressed on a
+   session that is still connected. Boxed and set off by the red rule so it
+   does not read as more of the session's own detail. */
+.session-close-confirm {
+  margin-top: .45rem;
+  padding: .45rem .55rem;
+  border-left: 2px solid var(--red);
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  cursor: default;
+}
+.session-close-warning {
+  font-size: .76rem;
+  line-height: 1.35;
+  color: var(--text);
+}
+.session-close-actions {
+  display: flex;
+  gap: .4rem;
+  margin-top: .4rem;
+}
+.btn-close-confirm, .btn-close-cancel {
+  font-size: .74rem;
+  font-weight: 600;
+  padding: .25rem .55rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+}
+.btn-close-confirm {
+  border-color: var(--red);
+  background: var(--red-bg);
+  color: var(--red);
+}
+.session-rename-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: .92rem;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: .1rem .35rem;
+}
+.session-where {
+  font-size: .78rem;
+  color: var(--text-muted);
+  margin-top: .2rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-totals-compact {
+  font-size: .74rem;
+  color: var(--text-faint);
+  margin-top: .2rem;
+  font-family: var(--font-mono);
+}
+
+.dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.dot-initializing      { background: var(--grey); }
+.dot-working           { background: var(--green); animation: pulse 1.6s ease-in-out infinite; }
+.dot-awaiting_approval { background: var(--amber); animation: pulse 1.2s ease-in-out infinite; }
+.dot-awaiting_input    { background: var(--blue); }
+.dot-done              { background: var(--grey); }
+.dot-error             { background: var(--red); }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .35; }
+}
+
+/* ---------- main pane ---------- */
+
+#main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+#pane-header {
+  flex-shrink: 0;
+  padding: .7rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  align-items: baseline;
+  gap: .75rem;
+  flex-wrap: wrap;
+}
+#pane-title { font-weight: 600; font-size: 1rem; }
+#pane-status { font-size: .8rem; color: var(--text-muted); display: flex; align-items: center; gap: .4rem; }
+
+/* ---------- permission mode control (ISSUE-012) ---------- */
+
+.permission-mode-control {
+  margin-left: auto;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  font-size: .8rem;
+  color: var(--text-muted);
+}
+.permission-mode-control[hidden] { display: none; }
+.permission-mode-control label { font-size: .78rem; }
+#permission-mode-select {
+  font-size: .82rem;
+}
+.permission-mode-error {
+  color: var(--red);
+  font-size: .76rem;
+}
+.permission-mode-error[hidden] { display: none; }
+
+/* ---------- session cost / token totals footer (ISSUE-011) ---------- */
+
+/* Cost on the left, permission mode on the right, one border for both. */
+.session-footer {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: .5rem 1.25rem;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+.session-footer[hidden] { display: none; }
+.session-totals { min-width: 0; }
+.session-totals[hidden] { display: none; }
+
+/* Plan limits, beside the token counts. Percentages when the user has run
+   /usage, and the window in force from the CLI's own push event otherwise. */
+.plan-usage { min-width: 0; }
+.plan-usage[hidden] { display: none; }
+.plan-usage-row { display: flex; flex-wrap: wrap; gap: 1.1rem; }
+.plan-window { display: flex; flex-direction: column; gap: .1rem; }
+.plan-window-label {
+  font-size: .66rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--text-faint);
+}
+.plan-window-value { font-family: var(--font-mono); font-size: .82rem; }
+/* When the reading was taken. Quieter than the numbers -- it qualifies them
+   rather than competing with them -- but on the row, not in a tooltip, because
+   a stale figure that looks current is the thing worth avoiding. */
+.plan-window.is-age { border-left: 1px solid var(--border); padding-left: 1.1rem; }
+.plan-window-age { font-size: .78rem; color: var(--text-muted); }
+.plan-window-reset { font-size: .7rem; color: var(--text-faint); }
+/* A warning or a rejection is the thing to act on, so it stops looking like
+   one more statistic. */
+.plan-usage.is-warning .plan-window.is-limit .plan-window-value { color: var(--amber); font-weight: 600; }
+/* A closed window is not a warning about the future; it is the current state,
+   and nothing runs until it resets. */
+.plan-usage.is-rejected .plan-window.is-limit .plan-window-value { color: var(--red); font-weight: 600; }
+.plan-usage.is-rejected .plan-window.is-limit .plan-window-label { color: var(--red); }
+.session-totals-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.1rem;
+}
+.total-stat { display: flex; flex-direction: column; gap: .1rem; }
+.total-stat-label {
+  font-size: .66rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--text-faint);
+}
+.total-stat-value {
+  font-size: .84rem;
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+/* The resumed-totals caveat, now a column in the row rather than a sentence
+   under it. Amber because it qualifies every other number beside it. */
+.total-stat.is-caveat .total-stat-value { color: var(--amber); }
+
+#transcript {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 1rem 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: .7rem;
+  position: relative;
+}
+
+/* Entries keep their height instead of being squeezed to fit (ISSUE-025).
+   As a flex column, #transcript hands every child the default flex-shrink: 1,
+   and a child that sets `overflow: hidden` -- the tool card, the approval
+   card, the thinking block -- loses the automatic minimum size that would
+   otherwise stop it shrinking past its content. So the transcript crushed its
+   own entries rather than scrolling: measured on the real page, a 150px tool
+   card rendered at 2px, and no scrollbar appeared until everything shrinkable
+   had already collapsed to a hairline, approval buttons included. */
+#transcript > * { flex-shrink: 0; }
+
+.empty-state {
+  margin: auto;
+  color: var(--text-muted);
+  font-size: .92rem;
+  text-align: center;
+  max-width: 32ch;
+}
+
+/* The greeting an empty pane opens on, matching the desktop's welcome screen
+   (ISSUE-021). Only this variant carries the mark; the plain .empty-state is
+   also what Loading and read failures use. */
+.empty-state.is-welcome::before {
+  content: "";
+  display: block;
+  width: 96px;
+  height: 96px;
+  margin: 0 auto .9rem;
+  background: url("codinian.svg") center / contain no-repeat;
+}
+
+/* ---------- bubbles ---------- */
+
+.bubble-group { display: flex; flex-direction: column; gap: .3rem; max-width: 78%; min-width: 0; }
+/* The group's width is the ceiling for what it holds. Without this, a block
+   inside it is free to size to its own min-content and ignore the group:
+   measured at a 390px viewport, one 150-character token in a closing summary
+   rendered the bubble 606px wide, and #transcript clips instead of scrolling,
+   so the right-hand half of every line was unreachable on a phone. */
+.bubble-group > * { max-width: 100%; }
+.bubble-group.role-user { align-self: flex-end; align-items: flex-end; }
+.bubble-group.role-assistant { align-self: flex-start; align-items: flex-start; }
+
+.bubble-role-label {
+  font-size: .68rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--text-faint);
+  padding: 0 .2rem;
+}
+
+.text-block {
+  border-radius: var(--radius);
+  padding: .55rem .8rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  /* `anywhere` rather than `word-break: break-word`: both wrap a long path or
+     URL onto the next line, but only `anywhere` is counted when the engine
+     measures min-content, and min-content is what the bubble sizes itself to
+     when the pane is narrower than the longest token in the message. */
+  overflow-wrap: anywhere;
+  font-size: .92rem;
+}
+.role-assistant .text-block { background: var(--bubble-assistant); color: var(--bubble-assistant-fg); }
+.role-user .text-block { background: var(--bubble-user); color: var(--bubble-user-fg); }
+
+/* A rendered message: the markdown body brings its own paragraph and list
+   spacing, so the bubble stops preserving whitespace and hands over. The
+   measure is capped because the pane is not: maximised on a wide screen the
+   bubble was running past 200 characters a line, which is where prose stops
+   being readable however well it is set. */
+.text-block.is-prose {
+  white-space: normal;
+  padding: .7rem .95rem;
+  /* min(), not a bare 72ch: on a phone 72ch is wider than the screen, and this
+     selector outranks the `.bubble-group > *` clamp above, so a bare value
+     would win and put the measure back outside the viewport. */
+  max-width: min(72ch, 100%);
+}
+
+/* Thinking reads as reasoning, not as a footnote: a rule down the left rather
+   than a dashed box, and the same serif as a message a shade lighter. It is
+   collapsed by default (see the `thinking` case in app.js) and the summary
+   line is how you open it. */
+.thinking-block {
+  border-left: 2px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  width: 100%;
+  margin: .15rem 0;
+}
+.thinking-summary {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .15rem .7rem .15rem .8rem;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  font-size: .68rem;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-faint);
+}
+.thinking-summary:hover { color: var(--text-muted); }
+.thinking-summary::-webkit-details-marker { display: none; }
+.thinking-summary::before {
+  content: "\25B8";
+  display: inline-block;
+  transition: transform .12s ease;
+  font-size: .7rem;
+}
+.thinking-block[open] .thinking-summary::before { transform: rotate(90deg); }
+.thinking-body {
+  padding: .1rem .8rem .5rem;
+  word-break: break-word;
+  max-width: 74ch;
+}
+
+/* ---------- injected context (ISSUE-026) ----------
+   Skill bodies and hook output arrive as user turns and used to render as a
+   full bubble, which put a 5,000-character skill document in the middle of the
+   conversation. Folded, and labelled with its first line. */
+
+.context-block {
+  align-self: stretch;
+  width: 100%;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: .82rem;
+  overflow: hidden;
+}
+.context-summary {
+  display: flex;
+  align-items: baseline;
+  gap: .5rem;
+  padding: .4rem .7rem;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  min-width: 0;
+}
+.context-summary::-webkit-details-marker { display: none; }
+.context-summary::before {
+  content: "\25B8";
+  font-size: .75rem;
+  color: var(--text-faint);
+  transition: transform .12s ease;
+  flex-shrink: 0;
+}
+.context-block[open] .context-summary::before { transform: rotate(90deg); }
+.context-label {
+  font-size: .68rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+.context-hint {
+  min-width: 0;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.context-body {
+  padding: 0 .8rem .7rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-muted);
+  font-size: .8rem;
+  line-height: 1.5;
+  max-height: 24rem;
+  overflow-y: auto;
+}
+
+/* ---------- tool card ---------- */
+
+.tool-card {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+  align-self: stretch;
+}
+.tool-card.is-error { border-color: var(--red); }
+/* Bash and BashOutput render as a `details`: the head is the summary, so a
+   closed card is one line. The caret sits where the tool name starts. */
+.tool-card.is-folding > .tool-card-head { cursor: pointer; list-style: none; }
+.tool-card.is-folding > .tool-card-head::-webkit-details-marker { display: none; }
+.tool-card.is-folding > .tool-card-head::before {
+  content: "\25B8";
+  display: inline-block;
+  flex-shrink: 0;
+  font-size: .7rem;
+  color: var(--text-faint);
+  transition: transform .12s ease;
+}
+.tool-card.is-folding[open] > .tool-card-head::before { transform: rotate(90deg); }
+.tool-card.is-folding:not([open]) > .tool-card-head { background: none; }
+.tool-card.is-folding:not([open]):hover > .tool-card-head { background: var(--surface-2); }
+.tool-card-head {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .5rem .8rem;
+  background: var(--surface-2);
+  font-size: .84rem;
+}
+.tool-card-name { font-weight: 600; font-family: var(--font-mono); flex-shrink: 0; }
+/* What the call is doing, next to the tool's name (ISSUE-026). One line: the
+   full text is in the card body, and a wrapping heading would push the state
+   badge around as output arrives. */
+.tool-card-summary {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: .8rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tool-card-state {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: .72rem;
+  padding: .1rem .5rem;
+  border-radius: 999px;
+  background: var(--grey-bg);
+  color: var(--grey);
+}
+.tool-card-state.state-ok { background: var(--green-bg); color: var(--green); }
+.tool-card-state.state-error { background: var(--red-bg); color: var(--red); }
+.tool-card-state.state-pending { background: var(--amber-bg); color: var(--amber); }
+
+.tool-card-section { padding: .6rem .8rem; border-top: 1px solid var(--border); }
+/* First line of a folded result, so the toggle is a decision rather than a
+   guess about what is behind it. */
+.tool-result-preview {
+  font-family: var(--font-mono);
+  font-size: .78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: .4rem;
+}
+.tool-card-section-label {
+  font-size: .68rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--text-faint);
+  margin-bottom: .35rem;
+}
+.code-block {
+  background: var(--code-bg);
+  color: var(--code-fg);
+  border: 1px solid var(--code-border);
+  border-radius: var(--radius-sm);
+  padding: .55rem .7rem;
+  font-family: var(--font-mono);
+  font-size: .8rem;
+  line-height: 1.45;
+  overflow-x: auto;
+  white-space: pre;
+  max-width: 100%;
+}
+
+/* A picture a tool returned. Capped so one screenshot does not fill the pane;
+   the class the click toggles takes the cap off. */
+.tool-result-image {
+  display: block;
+  max-width: 100%;
+  max-height: 22rem;
+  width: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--code-bg);
+  margin-bottom: .4rem;
+  cursor: zoom-in;
+}
+.tool-result-image.is-full { max-height: none; cursor: zoom-out; }
+
+.tool-result-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: .78rem;
+  padding: .25rem .6rem;
+  margin-bottom: .4rem;
+}
+.tool-result-toggle:hover { background: var(--surface-2); }
+
+/* ---------- plan (ExitPlanMode) ---------- */
+
+.md-body { font-size: .88rem; line-height: 1.55; overflow-wrap: anywhere; }
+.md-body > * + * { margin-top: .6rem; }
+/* A message and a thinking block are prose; a plan is a document inside a tool
+   card and keeps the card's sans. */
+.md-body.is-message {
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  line-height: 1.62;
+}
+.md-body.is-thinking {
+  font-family: var(--font-serif);
+  font-size: .95rem;
+  line-height: 1.6;
+}
+.md-body.is-message > * + *, .md-body.is-thinking > * + * { margin-top: .7rem; }
+.md-link { color: var(--accent); text-decoration: underline; }
+.md-heading { font-weight: 600; line-height: 1.3; }
+.md-heading:is(h1, h2) { font-size: 1.05rem; }
+.md-heading:is(h3, h4) { font-size: .98rem; }
+.md-heading:is(h5, h6) { font-size: .9rem; color: var(--text-muted); }
+.md-paragraph { white-space: pre-wrap; }
+.md-list { padding-left: 1.4rem; display: flex; flex-direction: column; gap: .25rem; }
+.md-inline-code {
+  font-family: var(--font-mono);
+  font-size: .85em;
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
+  border-radius: 4px;
+  padding: .05rem .3rem;
+}
+.md-code-block { margin: 0; }
+.approval-card .md-inline-code { background: var(--surface); }
+
+/* ---------- diff (Edit / MultiEdit / Write) ---------- */
+
+.diff-file-heading {
+  font-family: var(--font-mono);
+  font-size: .82rem;
+  font-weight: 600;
+  margin-bottom: .4rem;
+  word-break: break-all;
+}
+.diff-hunk + .diff-hunk { margin-top: .7rem; }
+.diff-hunk-label { font-size: .72rem; color: var(--text-muted); margin-bottom: .25rem; }
+.diff-lines {
+  border: 1px solid var(--code-border);
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+  max-width: 100%;
+  font-family: var(--font-mono);
+  font-size: .8rem;
+  line-height: 1.5;
+}
+.diff-line { white-space: pre; padding-right: .6rem; }
+.diff-line::before {
+  content: attr(data-marker) " ";
+  display: inline-block;
+  width: 1.3rem;
+  text-align: center;
+  user-select: none;
+  opacity: .7;
+}
+.diff-line-context { background: var(--code-bg); color: var(--code-fg); }
+.diff-line-add { background: var(--green-bg); color: var(--green); }
+.diff-line-remove { background: var(--red-bg); color: var(--red); }
+.approval-card .diff-lines { background: var(--surface); }
+.approval-card .diff-line-context { background: var(--surface); }
+.diff-note { font-size: .78rem; color: var(--text-muted); margin-top: .4rem; }
+
+.write-label {
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--text-faint);
+  margin-bottom: .3rem;
+}
+
+/* ---------- subagent transcript (ISSUE-017) ----------
+   A subagent's work, nested inside the Agent card that spawned it. Collapsed
+   by default: a subagent routinely out-produces the parent it runs under, so
+   expanding every one would bury the conversation it belongs to. */
+
+.tool-card.is-agent { border-color: var(--blue); }
+
+.subagent {
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+.subagent-toggle {
+  display: flex;
+  align-items: baseline;
+  gap: .5rem;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  padding: .45rem .8rem;
+  font-size: .8rem;
+  text-align: left;
+}
+.subagent-toggle::before {
+  content: "\25B8";
+  font-size: .75rem;
+  color: var(--text-faint);
+  transition: transform .12s ease;
+}
+.subagent-toggle[aria-expanded="true"]::before { transform: rotate(90deg); }
+.subagent-toggle:hover { color: var(--text); }
+.subagent-label {
+  font-size: .68rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--blue);
+  font-weight: 600;
+}
+.subagent-count { color: var(--text-faint); }
+
+.subagent-body {
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  padding: .2rem .8rem .8rem;
+  /* Same flex-shrink guard the transcript needs, and for the same reason: a
+     child that hides its overflow would otherwise be squeezed to a hairline
+     rather than making this column taller (ISSUE-025). */
+  max-height: 32rem;
+  overflow-y: auto;
+}
+.subagent-body > * { flex-shrink: 0; }
+.subagent-body[hidden] { display: none; }
+.subagent-load {
+  align-self: flex-start;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: .3rem .7rem;
+  font-size: .8rem;
+}
+.subagent-load:hover { border-color: var(--blue); color: var(--blue); }
+.subagent-load:disabled { opacity: .6; cursor: default; }
+.subagent-note { font-size: .8rem; color: var(--text-muted); padding: .2rem 0; }
+/* One level of nesting is the limit the SDK allows, so a subagent's own cards
+   never nest further; keep them visually subordinate all the same. */
+.subagent-body .tool-card { background: var(--surface-2); }
+.subagent-body .bubble-group { max-width: 100%; }
+
+/* ---------- approval card ---------- */
+
+.approval-card {
+  width: 100%;
+  border: 1px solid var(--amber);
+  border-radius: var(--radius);
+  background: var(--amber-bg);
+  overflow: hidden;
+  align-self: stretch;
+}
+.approval-card-head {
+  padding: .6rem .8rem .3rem;
+  font-weight: 600;
+  font-size: .88rem;
+  color: var(--amber);
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+.approval-card-body { padding: 0 .8rem .8rem; }
+.approval-card-desc { font-size: .85rem; margin-bottom: .5rem; }
+.approval-card .code-block { background: var(--surface); }
+.approval-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .6rem; }
+.approval-actions button {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: .4rem .9rem;
+  font-size: .84rem;
+  font-weight: 600;
+  background: var(--surface);
+  color: var(--text);
+}
+.btn-approve { background: var(--green) !important; color: #ffffff !important; border-color: transparent !important; }
+.btn-deny { background: var(--red) !important; color: #ffffff !important; border-color: transparent !important; }
+.btn-edit { background: var(--surface); }
+.approval-actions button:hover { filter: brightness(1.05); }
+.approval-actions button:disabled { opacity: .5; cursor: default; }
+
+.approval-reason {
+  margin-top: .5rem;
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: .4rem .6rem;
+  font-size: .82rem;
+}
+
+.approval-edit-box { margin-top: .6rem; }
+.approval-edit-box textarea {
+  width: 100%;
+  min-height: 7rem;
+  background: var(--code-bg);
+  color: var(--code-fg);
+  border: 1px solid var(--code-border);
+  border-radius: var(--radius-sm);
+  padding: .5rem .6rem;
+  font-family: var(--font-mono);
+  font-size: .8rem;
+  resize: vertical;
+}
+.approval-edit-error { color: var(--red); font-size: .78rem; margin-top: .3rem; }
+
+.approval-resolved-line {
+  width: 100%;
+  align-self: stretch;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: .5rem .8rem;
+  font-size: .82rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  background: var(--surface);
+}
+.approval-resolved-line .decision-allow { color: var(--green); font-weight: 600; }
+.approval-resolved-line .decision-deny { color: var(--red); font-weight: 600; }
+
+/* ---------- usage footer / rate limit / system line ---------- */
+
+.usage-line {
+  align-self: center;
+  font-size: .74rem;
+  color: var(--text-faint);
+  padding: .2rem .7rem;
+  display: flex;
+  gap: .9rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.usage-line.is-error { color: var(--red); }
+
+.rate-limit-banner {
+  align-self: stretch;
+  width: 100%;
+  border: 1px solid var(--amber);
+  background: var(--amber-bg);
+  color: var(--amber);
+  border-radius: var(--radius-sm);
+  padding: .4rem .7rem;
+  font-size: .8rem;
+}
+
+/* Errors that have no card to attach to: a session that failed to start, a
+   request the server could not handle. Before this they went to console.warn,
+   so a session that never started showed an error dot and nothing else. */
+.alerts { display: flex; flex-direction: column; gap: .4rem; padding: 0 1rem; }
+.alerts:empty { display: none; }
+
+.alert {
+  display: flex;
+  align-items: flex-start;
+  gap: .6rem;
+  border: 1px solid var(--red);
+  background: var(--red-bg, transparent);
+  color: var(--red);
+  border-radius: var(--radius-sm);
+  padding: .5rem .7rem;
+  font-size: .82rem;
+}
+.alert-text { flex: 1; }
+.alert-detail { display: block; margin-top: .25rem; opacity: .85; font-family: var(--font-mono); font-size: .76rem; word-break: break-word; }
+.alert-dismiss {
+  flex: none;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 .2rem;
+  opacity: .7;
+}
+.alert-dismiss:hover { opacity: 1; }
+
+.system-line {
+  align-self: center;
+  font-size: .76rem;
+  color: var(--text-faint);
+  text-align: center;
+}
+.system-line.is-error { color: var(--red); }
+
+.unknown-event {
+  align-self: stretch;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  padding: .4rem .7rem;
+  font-size: .78rem;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+}
+
+/* ---------- jump to a waiting approval (ISSUE-025) ---------- */
+
+.approval-jump {
+  flex-shrink: 0;
+  border: none;
+  border-top: 1px solid var(--amber);
+  background: var(--amber-bg);
+  color: var(--amber);
+  font-size: .82rem;
+  font-weight: 600;
+  padding: .5rem 1.25rem;
+  text-align: center;
+}
+.approval-jump[hidden] { display: none; }
+
+/* Several subagents at once. Each has its own Agent card carrying its own
+   running/done badge, but with three in flight they are scattered through the
+   transcript with no way to see the total. Quieter than the approval jump
+   above it: nothing here is waiting on a decision. */
+.agents-running {
+  flex-shrink: 0;
+  border: none;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: .78rem;
+  padding: .4rem 1.25rem;
+  text-align: center;
+  cursor: pointer;
+}
+.agents-running[hidden] { display: none; }
+.agents-running:hover { color: var(--text); }
+.approval-jump:hover { filter: brightness(1.05); }
+
+/* ---------- composer ---------- */
+
+#composer {
+  flex-shrink: 0;
+  display: flex;
+  /* The buttons sit at the bottom of the row rather than stretching, because
+     the box beside them grows upward as the message does. */
+  align-items: flex-end;
+  gap: .6rem;
+  padding: .75rem 1.25rem;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+#composer-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: .55rem .8rem;
+  color: var(--text);
+  /* A textarea inherits none of these. Without the font it comes out in the
+     browser's monospace default, and without the line-height the height app.js
+     measures is not the height a line of the transcript would take. */
+  font: inherit;
+  line-height: 1.5;
+  resize: none;
+  overflow-y: auto;
+  /* One line to start with; app.js grows it from there. The ceiling is a
+     fraction of the viewport rather than a row count, so a long prompt on a
+     phone cannot push the transcript off the screen entirely. */
+  max-height: 40vh;
+}
+#composer-input:disabled { opacity: .6; }
+#composer-send {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: .55rem 1.1rem;
+  font-weight: 600;
+}
+#composer-send:disabled { opacity: .5; cursor: default; }
+
+/* ---------- command and skill palette (ISSUE-016) ----------
+   Sits above the composer, opened by typing `/`, which is the affordance the
+   CLI gets for free and a GUI has to say out loud -- the composer's own
+   placeholder is what does that. */
+
+.command-palette {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  max-height: 18rem;
+}
+.command-palette[hidden] { display: none; }
+.command-palette-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: baseline;
+  gap: .6rem;
+  padding: .4rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--text-faint);
+}
+.command-palette-hint { margin-left: auto; text-transform: none; letter-spacing: 0; }
+
+.command-list { overflow-y: auto; min-height: 0; padding: .25rem 0; }
+.command-row {
+  display: flex;
+  align-items: baseline;
+  gap: .6rem;
+  padding: .3rem 1.25rem;
+  cursor: pointer;
+  font-size: .82rem;
+}
+.command-row:hover, .command-row.is-active { background: var(--surface-2); }
+.command-row.is-active { box-shadow: inset 2px 0 0 var(--accent); }
+.command-name {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.command-args {
+  font-family: var(--font-mono);
+  font-size: .74rem;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+.command-desc {
+  min-width: 0;
+  flex: 1;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.command-empty { padding: .6rem 1.25rem; font-size: .82rem; color: var(--text-muted); }
+
+/* A skill load, so the reason the model changed approach mid-turn is visible
+   rather than mysterious. */
+.tool-card.is-skill { border-color: var(--accent); }
+.tool-card.is-skill .tool-card-name { color: var(--accent); }
+
+/* Stop, shown only while a turn is running (ISSUE-033). */
+.composer-stop {
+  background: var(--surface-2);
+  border: 1px solid var(--red);
+  border-radius: var(--radius-sm);
+  color: var(--red);
+  padding: .55rem 1rem;
+  font-weight: 600;
+}
+.composer-stop[hidden] { display: none; }
+.composer-stop:hover { background: var(--red-bg); }
+.composer-stop:disabled { opacity: .6; cursor: default; }
+
+/* Text still being written. Marked so it is visibly provisional; the finished
+   block replaces it a moment later. */
+/* The live preview is the same words in the same face as the block that
+   replaces it when the turn's text arrives, so finishing a sentence does not
+   reset it in a different font. Still plain text: half a markdown list
+   rendered as it is typed is worse than the source. */
+.text-block.is-streaming {
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  line-height: 1.62;
+  max-width: 72ch;
+}
+.text-block.is-streaming::after {
+  content: "▌";
+  margin-left: .1rem;
+  opacity: .6;
+  animation: pulse 1.1s ease-in-out infinite;
+}
+
+/* ---------- history search (ISSUE-015) ---------- */
+
+.history-view {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: .9rem;
+}
+.history-view > * { flex-shrink: 0; }
+
+.history-search { display: flex; gap: .6rem; }
+#search-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: .6rem .8rem;
+  font-size: .95rem;
+}
+#search-go {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: .6rem 1.2rem;
+  font-weight: 600;
+}
+.history-scope {
+  font-size: .78rem;
+  color: var(--amber);
+}
+.history-scope[hidden] { display: none; }
+.history-status { font-size: .84rem; color: var(--text-muted); }
+
+.history-results { display: flex; flex-direction: column; gap: .7rem; }
+.history-results > * { flex-shrink: 0; }
+
+.history-hit {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: .7rem .85rem;
+}
+.history-hit-head {
+  display: flex;
+  align-items: baseline;
+  gap: .6rem;
+  flex-wrap: wrap;
+}
+.history-hit-title { font-weight: 600; font-size: .92rem; }
+.history-hit-count {
+  margin-left: auto;
+  font-size: .72rem;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+.history-hit-meta {
+  display: flex;
+  gap: .7rem;
+  flex-wrap: wrap;
+  margin: .2rem 0 .5rem;
+  font-size: .76rem;
+  color: var(--text-muted);
+}
+.history-hit-cwd { font-family: var(--font-mono); }
+
+.history-snippet {
+  display: flex;
+  gap: .5rem;
+  padding: .25rem 0;
+  font-size: .8rem;
+  line-height: 1.45;
+  border-top: 1px solid var(--border);
+}
+.history-snippet-role {
+  flex-shrink: 0;
+  width: 5rem;
+  font-size: .68rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--text-faint);
+  padding-top: .12rem;
+}
+.history-snippet-text { min-width: 0; word-break: break-word; color: var(--text-muted); }
+.history-snippet mark {
+  background: var(--amber-bg);
+  color: var(--amber);
+  border-radius: 2px;
+  padding: 0 .1rem;
+}
+
+.history-actions {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  margin-top: .6rem;
+}
+.history-action {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: .3rem .8rem;
+  font-size: .82rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.history-action:hover { border-color: var(--accent); color: var(--accent); }
+.history-action:disabled { opacity: .6; cursor: default; }
+.history-note { font-size: .78rem; color: var(--red); }
+
+/* ---------- reading a stored transcript (ISSUE-015) ----------
+   Same page and same renderer as a live session, so the difference has to be
+   said rather than left to be inferred from a composer that does nothing. */
+
+#app.history-mode .conn-status::before { background: var(--blue); }
+#app.history-mode #composer { opacity: .75; }
+#app.history-mode .inbox-toggle,
+#app.history-mode #permission-mode-control { display: none; }
+
+/* ---------- responsive ---------- */
+
+/* ---------- embedded single-session mode (WebKitGTK pane) ----------
+   Driven by ?embed=1&session=<id>: no sidebar, no topbar chrome — just the
+   transcript and composer for that one session, filling the viewport. */
+
+#app.embed-mode #topbar,
+#app.embed-mode #sidebar,
+#app.embed-mode #sidebar-backdrop,
+#app.embed-mode #pane-header {
+  display: none;
+}
+
+@media (max-width: 820px) {
+  #sidebar-toggle { display: inline-flex; }
+
+  #sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 20;
+    transform: translateX(-100%);
+    transition: transform .18s ease;
+    box-shadow: 2px 0 12px rgba(0, 0, 0, .25);
+  }
+  #app.sidebar-open #sidebar { transform: translateX(0); }
+
+  #sidebar-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, .35);
+    z-index: 15;
+  }
+  #app.sidebar-open #sidebar-backdrop { display: block; }
+
+  .bubble-group { max-width: 92%; }
+}
+
+.approval-resolved-line .decided-by {
+  color: var(--text-muted);
+}

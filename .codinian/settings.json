@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "codinian",
+  "default_permission_mode": "default",
+  "issues": {
+    "dir": "issues",
+    "id_prefix": "ISSUE",
+    "statuses": [
+      "open",
+      "in-progress",
+      "blocked",
+      "done",
+      "dropped",
+      "superseded"
+    ],
+    "types": [
+      "feature",
+      "bug",
+      "chore",
+      "spec",
+      "spike"
+    ],
+    "areas": [
+      "gui",
+      "remote",
+      "sdk",
+      "tools",
+      "packaging",
+      "db"
+    ],
+    "sections": [
+      "Summary",
+      "Acceptance / done-when",
+      "Notes & worklog",
+      "Resolution"
+    ]
+  }
+}

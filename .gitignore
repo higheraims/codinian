@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# Codinian user data: the live DB lives at ~/.local/share/codinian/codinian.db,
+# outside the repo. Ignore any local copy that lands in the tree.
+codinian.db
+*.sqlite
+*.sqlite3
+
+# Per-machine Claude Code settings (shared config belongs in .claude/settings.json)
+.claude/settings.local.json
+
+# Built skill archives; the directory beside each is the source of truth
+skills/*.skill
+
+# Ad-hoc captures; curated ones live in docs/screenshots/
+docs/Screenshot*.png
+
+# Art sources kept on disk but not versioned (only the in-use SVG is tracked)
+docs/art/*.eps
+docs/art/*.zip
+
+# OS
+.DS_Store

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Codinian
+Comment=Run and supervise Claude Agent SDK sessions
+Exec=/usr/bin/python3 @CHECKOUT@/main.py
+Icon=net.higheraims.codinian
+Terminal=false
+Categories=Development;
+StartupWMClass=net.higheraims.codinian
