@@ -145,13 +145,32 @@
     for (const block of content) {
       if (!isImageBlock(block)) continue;
       const source = block.source || {};
-      if (source.type === 'base64' && source.data && source.media_type) {
+      if (source.type === 'codinian_ref') {
+        const src = imageRefSrc(source.path);
+        if (src) out.push({ src, bytes: source.bytes || 0 });
+      } else if (source.type === 'base64' && source.data && source.media_type) {
+        // Still handled, because the demo data carries one and an old event
+        // might. Nothing on the live or replay path sends base64 any more.
         out.push({ src: `data:${source.media_type};base64,${source.data}`, bytes: source.data.length });
       } else if (source.type === 'url' && isSafeImageUrl(source.url)) {
         out.push({ src: source.url, bytes: 0 });
       }
     }
     return out;
+  }
+
+  // Turn an image reference's path into something `img src` can fetch.
+  //
+  // The token goes in the query string here, which `apiFetch` deliberately
+  // avoids. There is no alternative: `img` cannot carry an Authorization
+  // header, which is the same reason the WebSocket URL takes the token this
+  // way (see wsUrl). The path is required to be one of ours, so a reference
+  // from a tool result cannot point the fetch -- token attached -- at
+  // somewhere else.
+  function imageRefSrc(path) {
+    if (typeof path !== 'string' || !path.startsWith('/api/')) return null;
+    if (!authToken) return path;
+    return `${path}${path.includes('?') ? '&' : '?'}token=${encodeURIComponent(authToken)}`;
   }
 
   // ---------------------------------------------------------------------
@@ -2693,8 +2712,22 @@
       src: image.src,
       alt: `Image returned by ${toolName}`,
       title: 'Click to toggle full size',
+      // The picture is now a fetch rather than bytes already in hand, so a
+      // transcript with twenty screenshots in it should ask for the ones on
+      // screen and not the rest.
+      loading: 'lazy',
+      decoding: 'async',
+      referrerpolicy: 'no-referrer',
     });
     img.addEventListener('click', () => img.classList.toggle('is-full'));
+    // A reference can outlive what it points at -- a session closed, a
+    // transcript deleted. Say that, rather than leaving the browser's broken
+    // image icon to imply the tool failed.
+    img.addEventListener('error', () => {
+      if (!img.parentNode) return;
+      img.replaceWith(h('div', { class: 'tool-result-image-missing' },
+                        'This image is no longer available.'));
+    });
     return img;
   }
 

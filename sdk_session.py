@@ -50,6 +50,7 @@ from claude_agent_sdk import (
 import agent_options
 import claude_history
 import config as config_module
+import images
 import plan_usage
 from events import SessionStatus
 from session import SessionManager
@@ -201,6 +202,7 @@ class SdkSession:
 
     async def close(self) -> None:
         self._closed = True
+        images.store.forget_session(self._session_id)
         await self._sends.put(None)
         if self._name_task:
             self._name_task.cancel()
@@ -649,10 +651,21 @@ class SdkSession:
             self._emit("tool_use", tag({"tool_use_id": block.id, "name": block.name,
                                         "input": block.input}))
         elif isinstance(block, ToolResultBlock):
+            # A picture in the result goes to the image store and the event
+            # carries a reference to it, rather than 60,000 characters of
+            # base64 riding in the event object, the in-memory event list and
+            # every reconnect's backlog (ISSUE-035).
+            content = images.dereference_content(
+                getattr(block, "content", None),
+                f"/api/sessions/{self._session_id}",
+                block.tool_use_id,
+                keep=True,
+                session_id=self._session_id,
+            )
             self._emit("tool_result", tag({
                 "tool_use_id": block.tool_use_id,
                 "is_error": getattr(block, "is_error", None),
-                "content": getattr(block, "content", None),
+                "content": content,
             }))
 
     # ---------------------------------------------------------------- emit

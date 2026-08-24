@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+import images
+
 PROJECTS_DIR = Path.home() / ".claude" / "projects"
 
 # Line types the CLI writes for its own bookkeeping, carrying nothing a reader
@@ -290,6 +292,54 @@ def subagent_path(sdk_session_id: str, agent_id: str) -> Path | None:
     return path if path.is_file() else None
 
 
+def image_from_transcript(sdk_session_id: str, tool_use_id: str, index: int,
+                          agent_id: str | None = None) -> tuple[str, bytes] | None:
+    """The bytes of one image block, read back out of the stored transcript.
+
+    This is the durable half of ISSUE-035. The event a client rendered carries
+    only a reference -- session, tool_use_id, block index -- and this resolves
+    it against the same file the events were parsed from, so a picture is still
+    there after the live store has evicted it and after the session that
+    produced it is gone.
+
+    Returns None for anything that does not resolve, which the route turns into
+    a 404: an unreadable file, a tool_use_id not in it, an index past the end,
+    or a block at that index that is not an image.
+    """
+    path = (subagent_path(sdk_session_id, agent_id) if agent_id
+            else transcript_path(sdk_session_id))
+    if path is None or index < 0:
+        return None
+    try:
+        with path.open() as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(entry, dict):
+                    continue
+                for block in _blocks(entry):
+                    if (not isinstance(block, dict)
+                            or block.get("type") != "tool_result"
+                            or block.get("tool_use_id") != tool_use_id):
+                        continue
+                    content = block.get("content")
+                    if not isinstance(content, list) or index >= len(content):
+                        return None
+                    candidate = content[index]
+                    if not images.is_image_block(candidate):
+                        return None
+                    source = candidate.get("source")
+                    return images.decode(source if isinstance(source, dict) else {})
+    except OSError:
+        return None
+    return None
+
+
 def _blocks(entry: dict) -> list:
     content = entry.get("message", {}).get("content")
     if isinstance(content, list):
@@ -339,7 +389,7 @@ def _subagent_meta(entry: dict) -> dict:
     return meta
 
 
-def _user_events(entry: dict):
+def _user_events(entry: dict, image_base: str = "", image_query: str = ""):
     # Turns the CLI injected itself -- skill bodies, hook output, system
     # reminders -- are marked isMeta and dropped by events_for_session before
     # they reach here, so any user text at this point is what the user typed.
@@ -350,10 +400,19 @@ def _user_events(entry: dict):
             continue
         kind = block.get("type")
         if kind == "tool_result":
+            tool_use_id = block.get("tool_use_id")
+            # A picture in a stored result becomes a reference back to this
+            # same file rather than the base64 itself, exactly as the live path
+            # does (ISSUE-035). Replaying a session that read fifteen
+            # screenshots was 2.6 MB of JSON, 88% of it base64.
+            content = block.get("content")
+            if image_base and isinstance(tool_use_id, str):
+                content = images.dereference_content(content, image_base,
+                                                     tool_use_id, query=image_query)
             yield "tool_result", {
-                "tool_use_id": block.get("tool_use_id"),
+                "tool_use_id": tool_use_id,
                 "is_error": block.get("is_error"),
-                "content": block.get("content"),
+                "content": content,
                 # Present only when this result closes an `Agent` call. The
                 # client uses it to offer the subagent's transcript, which is
                 # fetched on demand rather than seeded: those transcripts run
@@ -367,13 +426,20 @@ def _user_events(entry: dict):
 
 
 def _events_from(path: Path, limit: int, skip_sidechain: bool = True,
-                 tag: dict | None = None) -> list[tuple[str, dict]]:
+                 tag: dict | None = None,
+                 image_base: str = "",
+                 image_query: str = "") -> list[tuple[str, dict]]:
     """Parse one JSONL transcript into events, oldest first.
 
     Shared by the main transcript and by each subagent's, because the CLI
     writes the same message shape in both. `skip_sidechain` is the difference:
     a subagent's file is entirely sidechain entries, which is exactly what a
     reader of that file wants and exactly what a reader of the parent does not.
+
+    `image_base` is the URL prefix an image result's reference is built on
+    (ISSUE-035). It is always a `/api/history/<sdk-id>` path, even when these
+    events are being seeded into a live session, because the bytes are in this
+    file and this file is what the route reads.
     """
     events: list[tuple[str, dict]] = []
     try:
@@ -402,7 +468,7 @@ def _events_from(path: Path, limit: int, skip_sidechain: bool = True,
                 if entry.get("type") == "assistant":
                     events.extend(_assistant_events(entry))
                 elif entry.get("type") == "user":
-                    events.extend(_user_events(entry))
+                    events.extend(_user_events(entry, image_base, image_query))
     except OSError:
         return []
 
@@ -433,7 +499,11 @@ def subagent_events(sdk_session_id: str, agent_id: str,
     path = subagent_path(sdk_session_id, agent_id)
     if path is None:
         return []
-    events = _events_from(path, limit, skip_sidechain=False)
+    events = _events_from(
+        path, limit, skip_sidechain=False,
+        image_base=f"/api/history/{sdk_session_id}",
+        image_query=f"?agent={agent_id}",
+    )
 
     # A subagent's opening user turn is the briefing the parent handed it, not
     # conversation, and it is long: rendered as a bubble it fills the whole
@@ -455,4 +525,5 @@ def events_for_session(sdk_session_id: str,
     path = transcript_path(sdk_session_id)
     if path is None:
         return []
-    return _events_from(path, limit)
+    return _events_from(path, limit,
+                        image_base=f"/api/history/{sdk_session_id}")

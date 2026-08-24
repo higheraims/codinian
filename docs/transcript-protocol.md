@@ -51,11 +51,40 @@ up to N ignores anything `<= N`. Backlog replay (below) uses it too.
   The result for a prior `tool_use` with the same `tool_use_id`. `content` is
   either a string or an array of blocks. A block is usually `{type: "text",
   text}`, but a tool that returns a picture -- `Read` on a PNG, a screenshot
-  driver -- sends `{type: "image", source: {type: "base64", media_type, data}}`
-  instead, where `data` is the image itself in base64. Render those as images:
-  stringifying one puts 60,000 characters of base64 where the picture should be,
-  which is what both clients did until ISSUE-035. See that issue for the size
-  this costs on the wire.
+  driver -- sends an image block instead. Render those as images: stringifying
+  one puts a wall of base64 where the picture should be.
+
+  **Image blocks carry a reference, not the picture** (ISSUE-035). The backend
+  rewrites what the SDK and the stored transcript both send
+  (`source: {type: "base64", media_type, data}`) into:
+
+  ```json
+  {"type": "image", "source": {
+     "type": "codinian_ref", "media_type": "image/png", "bytes": 21643,
+     "path": "/api/history/<sdk-id>/image/<tool_use_id>/<n>"}}
+  ```
+
+  `path` is same-origin and already complete, including any query string; the
+  client appends its own token and fetches it. `n` is the block's index within
+  `content`. `bytes` is the decoded size, for a client that wants to say how
+  big a picture is before loading it.
+
+  Two routes answer these, and which one a reference names depends on where the
+  event came from: `/api/sessions/{id}/image/{tool_use_id}/{n}` for a live
+  session, `/api/history/{sdk_id}/image/{tool_use_id}/{n}` for replayed
+  history, the latter taking `?agent=<agent_id>` for a subagent's transcript. A
+  client does not choose between them -- it fetches the `path` it was given.
+  Both answer the image bytes with a real `Content-Type`, an `ETag` and a
+  long-lived `Cache-Control`, because a tool result never changes.
+
+  This is why the field exists. Sending the base64 inline put the picture in
+  the event object, in the in-memory event list for the life of the session, in
+  every WebSocket frame, and in the whole backlog again on every reconnect. One
+  measured session -- fifteen screenshots read during a UI review -- replayed
+  2,647,253 bytes, of which 2,317,676 were base64.
+
+  A client should still handle a `base64` source: nothing on the live or replay
+  path emits one now, but the demo data does, and it costs one branch.
 
   A result closing an `Agent` call additionally carries `agent_id`, plus
   `agent_description`, `agent_model` and `agent_status` when the transcript

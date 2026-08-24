@@ -13,7 +13,9 @@ the token is also accepted as a `token` query parameter.
 """
 
 import asyncio
+import hashlib
 import json
+import re
 import secrets
 import sys
 import traceback
@@ -29,11 +31,51 @@ from remote import projects_api  # noqa: E402
 import agent_options  # noqa: E402
 import claude_history  # noqa: E402
 import history_search  # noqa: E402
+import images  # noqa: E402
 import project  # noqa: E402
 from session import PERMISSION_MODES, Session, SessionManager  # noqa: E402
 from sdk_session import SdkRuntime  # noqa: E402
 
 STATIC = Path(__file__).parent / "static"
+
+# A media type read out of a transcript before it goes in a Content-Type
+# header. The value comes from whatever the tool put in the image block, so it
+# is matched rather than echoed.
+_IMAGE_MEDIA_TYPE = re.compile(r"image/[A-Za-z0-9.+-]{1,64}")
+
+# An image identified by session, tool call and block index never changes: the
+# tool ran once and its result is history. So the answer is cacheable outright
+# and the browser does not come back at all, which is the point -- a reconnect
+# used to re-send every picture inline (ISSUE-035). `private` because it is one
+# user's transcript and there may be a proxy in front (`tailscale serve`).
+_IMAGE_CACHE_CONTROL = "private, max-age=31536000, immutable"
+
+
+def _image_response(request: web.Request, media_type: str, data: bytes) -> web.Response:
+    """One image, with a real content type and an ETag, answering 304 when the
+    client already has it."""
+    etag = hashlib.sha256(data).hexdigest()[:32]
+    if request.headers.get("If-None-Match") == f'"{etag}"':
+        return web.Response(status=304, headers={
+            "ETag": f'"{etag}"', "Cache-Control": _IMAGE_CACHE_CONTROL})
+    content_type = media_type if _IMAGE_MEDIA_TYPE.fullmatch(media_type or "") \
+        else "application/octet-stream"
+    return web.Response(body=data, content_type=content_type, headers={
+        "ETag": f'"{etag}"',
+        "Cache-Control": _IMAGE_CACHE_CONTROL,
+        # The bytes are a tool result, so they are content this app did not
+        # write. Nothing here should ever be interpreted as a document.
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src \'none\'; sandbox",
+    })
+
+
+def _block_index(request: web.Request) -> int | None:
+    try:
+        index = int(request.match_info["index"])
+    except (KeyError, ValueError):
+        return None
+    return index if index >= 0 else None
 
 
 class ClientHub:
@@ -280,6 +322,42 @@ def _build_app(manager: SessionManager, runtime: SdkRuntime, hub: ClientHub,
             "events": [{"type": etype, **data} for etype, data in events],
         })
 
+    async def get_session_image(req):
+        """One image from a live session's tool result (ISSUE-035).
+
+        The store first, because a picture from the turn happening right now
+        may not be in the CLI's transcript yet; the transcript after that,
+        because the store is bounded and a long session evicts. Between them
+        every image a client has a reference to resolves.
+        """
+        sid = req.match_info["id"]
+        index = _block_index(req)
+        session = manager.get(sid)
+        if session is None or index is None:
+            raise web.HTTPNotFound()
+        tool_use_id = req.match_info["tool_use_id"]
+        found = images.store.get(sid, tool_use_id, index)
+        if found is None and session.sdk_session_id:
+            found = claude_history.image_from_transcript(
+                session.sdk_session_id, tool_use_id, index)
+        if found is None:
+            raise web.HTTPNotFound()
+        return _image_response(req, *found)
+
+    async def get_history_image(req):
+        """One image from a stored transcript, for a conversation with no live
+        session behind it. `?agent=` reads a subagent's file instead of the
+        main one, which is where a subagent's screenshots are."""
+        index = _block_index(req)
+        if index is None:
+            raise web.HTTPNotFound()
+        found = claude_history.image_from_transcript(
+            req.match_info["sdk_id"], req.match_info["tool_use_id"], index,
+            req.query.get("agent") or None)
+        if found is None:
+            raise web.HTTPNotFound()
+        return _image_response(req, *found)
+
     async def get_commands(req):
         """What a session can be asked to do (ISSUE-016).
 
@@ -405,9 +483,11 @@ def _build_app(manager: SessionManager, runtime: SdkRuntime, hub: ClientHub,
     app.router.add_post("/api/sessions/{id}/inject", inject_session)
     app.router.add_get("/api/sessions/{id}/commands", get_commands)
     app.router.add_get("/api/sessions/{id}/subagents/{agent_id}", get_subagent)
+    app.router.add_get("/api/sessions/{id}/image/{tool_use_id}/{index}", get_session_image)
     # Stored transcripts, which belong to no live session (ISSUE-015).
     app.router.add_get("/api/history/search", search_history)
     app.router.add_get("/api/history/{sdk_id}", get_history)
+    app.router.add_get("/api/history/{sdk_id}/image/{tool_use_id}/{index}", get_history_image)
     app.router.add_post("/api/history/{sdk_id}/resume", resume_history)
     app.router.add_get("/api/ws", websocket)
     # The project workspace routes (ISSUE-019, ISSUE-020). Registered before

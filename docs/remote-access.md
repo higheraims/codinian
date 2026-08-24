@@ -123,6 +123,8 @@ same files for everybody and hold no session data.
 | GET    | `/api/sessions/{id}`        | One session, 404 if unknown                       |
 | GET    | `/api/sessions/{id}/output` | A terminal session's screen as HTML                |
 | POST   | `/api/sessions/{id}/inject` | Send text to a terminal session, as if typed       |
+| GET    | `/api/sessions/{id}/image/{tool_use_id}/{n}` | One image from a tool result       |
+| GET    | `/api/history/{sdk_id}/image/{tool_use_id}/{n}` | The same, from a stored transcript |
 
 A request without a token gets `401 {"error": "unauthorized"}`. A request
 carrying an `Origin` header from a different host gets

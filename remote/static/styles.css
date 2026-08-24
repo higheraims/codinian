@@ -954,6 +954,17 @@ button { cursor: pointer; }
 }
 .tool-result-image.is-full { max-height: none; cursor: zoom-out; }
 
+/* Stands in for a picture whose bytes are gone -- the session closed, the
+   transcript was deleted. Reads as a note, not as a failed tool call. */
+.tool-result-image-missing {
+  padding: .5rem .6rem;
+  margin-bottom: .4rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: .85rem;
+}
+
 .tool-result-toggle {
   background: none;
   border: 1px solid var(--border);
