@@ -39,6 +39,13 @@ MAX_SEEDED_EVENTS = 2000
 # then from a client, so it is validated rather than assumed.
 _SAFE_AGENT_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
+# The same, for a session id, which reaches here straight off a URL and is then
+# interpolated into a glob pattern. Every id the CLI has written locally is a
+# plain UUID, but this is deliberately the charset rather than a UUID pattern:
+# the job is to keep glob metacharacters and path separators out, not to hold
+# the CLI to an id format it never promised.
+_SAFE_SESSION_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
+
 
 @dataclass
 class PriorSession:
@@ -255,8 +262,19 @@ def list_prior_sessions(limit: int = 200,
 
 def transcript_path(sdk_session_id: str) -> Path | None:
     """The JSONL file for an SDK session id. The CLI files them under a
-    directory named for the project, so this searches rather than guessing."""
-    if not sdk_session_id or not PROJECTS_DIR.is_dir():
+    directory named for the project, so this searches rather than guessing.
+
+    The id goes into a glob pattern, so it is checked first. Unchecked, `*` was
+    a valid id that matched whichever transcript came back first, which is not
+    a way to read anything the caller could not already list, but is not
+    something a lookup by id should do. Confinement never depended on this --
+    `..` is not a glob wildcard and returned nothing -- so this is about the
+    pattern being a pattern at all. Every caller that takes a session id from
+    outside reaches the filesystem through here.
+    """
+    if not sdk_session_id or not _SAFE_SESSION_ID.fullmatch(sdk_session_id):
+        return None
+    if not PROJECTS_DIR.is_dir():
         return None
     for path in PROJECTS_DIR.glob(f"*/{sdk_session_id}.jsonl"):
         return path
