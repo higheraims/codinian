@@ -1400,7 +1400,12 @@
     // to type against in the first place. The composer joins the mode control
     // and the totals row in gating on the kind, rather than offering a box that
     // silently swallows what is typed into it (ISSUE-038).
-    const writable = !!meta && meta.kind === 'sdk';
+    // `error` is now only set when the turn loop has stopped for good, so the
+    // session cannot take a message and the composer should not pretend it can
+    // (ISSUE-036). A failure rendering one block reports itself and leaves the
+    // session running, and does not reach here.
+    const stopped = !!meta && meta.status === 'error';
+    const writable = !!meta && meta.kind === 'sdk' && !stopped;
     const busy = writable && (meta.status === 'working' || meta.status === 'awaiting_approval');
     composerInput.disabled = !writable;
     composerSend.disabled = !writable;
@@ -1411,11 +1416,13 @@
     // with nothing selected has nothing to list.
     composerInput.placeholder = !meta
       ? 'Select a session to send a message…'
-      : !writable
-        ? 'This is a terminal session — drive it from the desktop app'
-        : busy
-          ? 'Message… (queued until this turn ends)'
-          : 'Message, or / for commands and skills…';
+      : stopped
+        ? 'This session stopped — resume it from History to carry on'
+        : !writable
+          ? 'This is a terminal session — drive it from the desktop app'
+          : busy
+            ? 'Message… (queued until this turn ends)'
+            : 'Message, or / for commands and skills…';
     // Only while there is something to stop. An always-present Stop that does
     // nothing most of the time is worse than no Stop (ISSUE-033).
     if (composerStop) composerStop.hidden = !busy || !!historyId;

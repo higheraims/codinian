@@ -456,7 +456,8 @@ async def _handle_client_message(ws, data, manager, runtime, hub,
     elif t == "send":
         # A refusal is worth a reply, unlike interrupt below: the message is
         # something the user wrote and expects to see land, and a terminal
-        # session would otherwise take it and do nothing (ISSUE-038).
+        # session or a session whose turn loop has died would otherwise take it
+        # and do nothing (ISSUE-036, ISSUE-038).
         if not runtime.send(data.get("session_id"), data.get("text", "")):
             await ws.send_json({"t": "error", "error": "session_not_running",
                                 "session_id": data.get("session_id")})

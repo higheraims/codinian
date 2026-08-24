@@ -139,6 +139,10 @@ class SdkSession:
         self._pending: dict[str, asyncio.Future] = {}
         self._pending_meta: dict[str, dict] = {}
         self._closed = False
+        # Set when the turn loop has stopped on an error and will not run
+        # again. `send` reads it to refuse rather than queue onto a queue with
+        # no consumer (ISSUE-036).
+        self._failed = False
         # Streaming deltas, accumulated per content-block index and flushed on a
         # timer rather than per token (ISSUE-033).
         self._delta_buf: dict[int, list[str]] = {}
@@ -213,6 +217,18 @@ class SdkSession:
     # -------------------------------------------------------- turn processing
 
     async def _run(self) -> None:
+        """The one task that drives every turn. It is created once in `start()`
+        and never recreated, so whatever ends it ends the session.
+
+        That makes the two kinds of failure worth separating. A raise out of
+        `_handle_message` is a bug in our own mapping of one block, and killing
+        a working conversation over an unrenderable block is the wrong trade,
+        so those are reported per message and the turn carries on. A raise from
+        the client -- the pipe to the `claude` subprocess going away -- has
+        nothing left to carry on with, so the loop stops and says so, and
+        `send` refuses from then on rather than queueing into the dark
+        (ISSUE-036).
+        """
         try:
             while not self._closed:
                 text = await self._sends.get()
@@ -221,15 +237,39 @@ class SdkSession:
                 self._emit_status(SessionStatus.WORKING)
                 await self._client.query(text)
                 async for msg in self._client.receive_response():
-                    self._handle_message(msg)
+                    try:
+                        self._handle_message(msg)
+                    except Exception as exc:
+                        self._emit("system", {"subtype": "error", "data": {
+                            "message": f"could not render one message: {exc}"}})
                 self._schedule_name_lookup()
                 if not self._closed:
                     self._emit_status(SessionStatus.AWAITING_INPUT)
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # surface, do not swallow
-            self._emit("system", {"subtype": "error", "data": {"message": str(exc)}})
-            self._emit_status(SessionStatus.ERROR)
+            self._fail(str(exc))
+
+    def _fail(self, message: str) -> None:
+        """The turn loop has stopped for good. Say so, refuse further sends,
+        and account for anything already queued behind the failure rather than
+        leaving it to look delivered (ISSUE-036)."""
+        self._failed = True
+        self._emit("system", {"subtype": "error", "data": {"message": message}})
+
+        orphaned = 0
+        while True:
+            try:
+                queued = self._sends.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+            if queued is not None:
+                orphaned += 1
+        if orphaned:
+            self._emit("system", {"subtype": "error", "data": {"message": (
+                f"{orphaned} queued message(s) were not delivered. "
+                "Resume this session from History to carry on.")}})
+        self._emit_status(SessionStatus.ERROR)
 
     def _schedule_name_lookup(self) -> None:
         """Look for the conversation's title, off the turn, once per turn."""
@@ -268,8 +308,13 @@ class SdkSession:
             if attempt + 1 < NAME_LOOKUP_ATTEMPTS:
                 await asyncio.sleep(NAME_LOOKUP_DELAY)
 
-    def send(self, text: str) -> None:
-        """Queue a user message. Safe to call from any thread.
+    def accepts_input(self) -> bool:
+        """Whether there is still a turn loop to read what `send` queues."""
+        return bool(self._loop) and not self._closed and not self._failed
+
+    def send(self, text: str) -> bool:
+        """Queue a user message. Safe to call from any thread. False means the
+        message was refused, not queued.
 
         The message is echoed into the transcript as it is queued rather than
         when the turn picks it up. The SDK never streams our own prompt back
@@ -277,15 +322,31 @@ class SdkSession:
         without this echo a session opened with a prompt showed the reply with
         no sign of the question; and a message typed while Claude is still
         working can sit in the queue for minutes, which read as a composer that
-        had swallowed it (ISSUE-026, ISSUE-028)."""
-        if not self._loop:
-            return
+        had swallowed it (ISSUE-026, ISSUE-028).
+
+        The echo is also why a refusal has to be checked twice. Queueing onto a
+        dead session would put the user's words in the transcript looking sent,
+        which is the failure ISSUE-036 is about, so the state is read here for
+        the caller's answer and again on the loop thread -- where `_failed` is
+        actually written -- before anything is echoed."""
+        if not self.accepts_input():
+            self._refuse_send()
+            return False
 
         def _queue() -> None:
+            if not self.accepts_input():
+                self._refuse_send()
+                return
             self._emit("text", {"role": "user", "text": text, "source": "operator"})
             self._sends.put_nowait(text)
 
         self._loop.call_soon_threadsafe(_queue)
+        return True
+
+    def _refuse_send(self) -> None:
+        self._emit("system", {"subtype": "error", "data": {"message": (
+            "This session has stopped and cannot take new messages. "
+            "Resume it from History to carry on.")}})
 
     def set_permission_mode(self, mode: str) -> None:
         """Change the permission mode mid-session (ISSUE-012). The SDK applies
@@ -683,11 +744,12 @@ class SdkRuntime:
         return session_id in self._sessions
 
     def send(self, session_id: str, text: str) -> bool:
+        """False when there is no live session by that id, or when the one
+        there is has stopped and cannot take the message (ISSUE-036)."""
         session = self._sessions.get(session_id)
         if session is None:
             return False
-        session.send(text)
-        return True
+        return session.send(text)
 
     def set_permission_mode(self, session_id: str, mode: str) -> bool:
         session = self._sessions.get(session_id)
