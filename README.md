@@ -1,6 +1,6 @@
 # Codinian
 
-Codinian is a GTK4/libadwaita desktop app for Linux that runs several Claude
+<img src="docs/art/codinian.svg" align=right size=100x100>Codinian is a GTK4/libadwaita desktop app for Linux that runs several Claude
 Code sessions at once and shows each one as a live, readable transcript. Every
 session is bound to its own working directory. Alongside the sessions it keeps a
 per-project workspace, browsing files, editing an in-repo issue tracker, and
