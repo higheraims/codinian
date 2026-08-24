@@ -147,6 +147,25 @@
     totals_cover_this_run_only: true,
   };
 
+  // The pre-SDK path, and the only session here the browser cannot drive: a
+  // terminal session's screen is mirrored in the desktop app and its composer
+  // lives there. Present so the demo shows the footer and composer in the
+  // state they take for one (ISSUE-038), which is otherwise unreachable
+  // without a running GTK window.
+  const SESSION_E = {
+    id: '9d55ac41',
+    name: 'Terminal: log triage',
+    workdir: '/home/user/projects/infra',
+    kind: 'terminal',
+    status: 'working',
+    created_at: new Date(Date.now() - 35 * 60000).toISOString(),
+    sdk_session_id: null,
+    permission_mode: 'default',
+    cost_usd: 0,
+    tokens: zeroTokens(),
+    totals_cover_this_run_only: false,
+  };
+
   // ---------------------------------------------------------------------
   // director: owns session state, per-session event backlog/seq, and the
   // pending-approval gates the scripts block on.
@@ -399,11 +418,12 @@
   // page -- a rate limit warning, a rejection -- without waiting for the real
   // conditions to occur. Mock mode is only reachable with ?mock=1, where this
   // is the whole point of the harness.
-  window.__mock = { director, sessions: { A: SESSION_A, B: SESSION_B, C: SESSION_C, D: SESSION_D } };
+  window.__mock = { director, sessions: { A: SESSION_A, B: SESSION_B, C: SESSION_C, D: SESSION_D, E: SESSION_E } };
   director.registerSession(SESSION_A);
   director.registerSession(SESSION_B);
   director.registerSession(SESSION_C);
   director.registerSession(SESSION_D);
+  director.registerSession(SESSION_E);
 
   // ---------------------------------------------------------------------
   // scripts

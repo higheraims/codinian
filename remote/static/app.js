@@ -506,6 +506,8 @@
     unknown_session: 'That session is no longer available.',
     rename_failed: 'That session could not be renamed. It may have ended.',
     close_failed: 'That session was already gone. Nothing was closed.',
+    session_not_running:
+      'That session is not taking messages. It has stopped, or it is a terminal session, which is driven from the desktop app.',
   };
 
   function applyServerError(msg) {
@@ -1393,9 +1395,15 @@
   // session that isn't there at all closes the composer now.
   function updateComposerState() {
     const meta = state.currentId ? state.sessionsMeta.get(state.currentId) : null;
-    const busy = !!meta && (meta.status === 'working' || meta.status === 'awaiting_approval');
-    composerInput.disabled = !meta;
-    composerSend.disabled = !meta;
+    // `send` and `interrupt` are looked up among SDK sessions only, so both are
+    // a no-op for a terminal session, and the browser shows no terminal output
+    // to type against in the first place. The composer joins the mode control
+    // and the totals row in gating on the kind, rather than offering a box that
+    // silently swallows what is typed into it (ISSUE-038).
+    const writable = !!meta && meta.kind === 'sdk';
+    const busy = writable && (meta.status === 'working' || meta.status === 'awaiting_approval');
+    composerInput.disabled = !writable;
+    composerSend.disabled = !writable;
     // The idle placeholder is the only thing that says the box does anything
     // besides send a message: typing "/" is a CLI convention, and a GUI that
     // does not mention it has the feature without the affordance (ISSUE-016).
@@ -1403,9 +1411,11 @@
     // with nothing selected has nothing to list.
     composerInput.placeholder = !meta
       ? 'Select a session to send a message…'
-      : busy
-        ? 'Message… (queued until this turn ends)'
-        : 'Message, or / for commands and skills…';
+      : !writable
+        ? 'This is a terminal session — drive it from the desktop app'
+        : busy
+          ? 'Message… (queued until this turn ends)'
+          : 'Message, or / for commands and skills…';
     // Only while there is something to stop. An always-present Stop that does
     // nothing most of the time is worse than no Stop (ISSUE-033).
     if (composerStop) composerStop.hidden = !busy || !!historyId;

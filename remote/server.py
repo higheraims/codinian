@@ -454,7 +454,12 @@ async def _handle_client_message(ws, data, manager, runtime, hub,
             await ws.send_json({"t": "error", "error": "unknown_session",
                                 "session_id": data.get("session_id")})
     elif t == "send":
-        runtime.send(data.get("session_id"), data.get("text", ""))
+        # A refusal is worth a reply, unlike interrupt below: the message is
+        # something the user wrote and expects to see land, and a terminal
+        # session would otherwise take it and do nothing (ISSUE-038).
+        if not runtime.send(data.get("session_id"), data.get("text", "")):
+            await ws.send_json({"t": "error", "error": "session_not_running",
+                                "session_id": data.get("session_id")})
     elif t == "interrupt":
         # No error reply on an unknown session: by the time a stop click lands,
         # the turn it meant to stop may already have finished, and telling the
