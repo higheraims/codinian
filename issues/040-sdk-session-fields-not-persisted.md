@@ -1,11 +1,11 @@
 ---
 id: ISSUE-040
 title: SDK session fields do not round-trip through the database
-status: open
+status: done
 type: bug
 area: db
 created: 2026-08-21
-updated: 2026-08-21
+updated: 2026-08-24
 related: []
 ---
 
@@ -32,3 +32,30 @@ process instead of resuming through the SDK.
 
 - 2026-08-21: Found in the pre-public review. `db.py` schema vs `session.py`
   dataclass. No user-visible effect at present.
+
+## Resolution
+
+The table persists them, which defuses the landmine rather than fencing it off.
+
+`db.py` gained seven columns: `kind`, `name_is_custom`, `permission_mode`,
+`sdk_session_id`, `cost_usd`, `tokens` (the four counts as JSON) and
+`totals_cover_this_run_only`. `name_is_custom` was not in the issue's list but
+belongs to the same class of mistake: a restore that dropped it would let the
+CLI's generated title overwrite a name the user chose.
+
+`sdk_status` is deliberately still absent, and `save_session`'s docstring says
+why. It is derived from the events of a running turn loop, no turn loop survives
+the process, and a stored one would only ever be a stale claim that a session was
+working.
+
+The migration is the pattern that was already there for `resume_session_id`,
+generalised into `_ADDED_COLUMNS` and applied with `ALTER TABLE` for any column
+`PRAGMA table_info` does not report. Every one is nullable or defaulted, so a row
+written by an older version reads back with those fields at their dataclass
+defaults; `_tokens_from_row` does the same for a `tokens` column that is null or
+holds something unparseable.
+
+Verified against a copy of the real database, which has 19 rows and still carries
+the long-dropped `goal` column: `open_db` added all seven, `load_sessions` read
+the existing rows back as `kind="terminal"`, a written SDK session round-tripped
+every field unchanged, and reopening the connection applied no further changes.
