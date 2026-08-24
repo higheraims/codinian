@@ -17,8 +17,7 @@
       "feature",
       "bug",
       "chore",
-      "spec",
-      "spike"
+      "spec"
     ],
     "areas": [
       "gui",

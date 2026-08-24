@@ -2,10 +2,10 @@
 id: ISSUE-002
 title: Confirm Agent SDK auth and event mapping (M0 spike)
 status: done
-type: spike
+type: chore
 area: sdk
 created: 2026-08-16
-updated: 2026-08-19
+updated: 2026-08-24
 related: [ISSUE-003, ISSUE-004, ISSUE-009, ISSUE-011]
 ---
 
