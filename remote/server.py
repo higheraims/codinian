@@ -109,7 +109,14 @@ def _request_token(request: web.Request) -> str:
 def _same_origin(request: web.Request) -> bool:
     """Reject cross-site requests. A page on another origin cannot read our
     responses, but it can send them, so without this a site the user happens to
-    have open could drive the API using a token it guessed or was given."""
+    have open could drive the API using a token it guessed or was given.
+
+    Defence in depth, not the security boundary. Both headers this compares are
+    supplied by the caller, and under DNS rebinding they stay consistent with
+    each other while pointing at us, so the check passes. The token is what
+    actually protects a state-changing route; this only removes the easiest way
+    to reach one (ISSUE-041).
+    """
     origin = request.headers.get("Origin")
     if not origin:
         return True  # curl, the desktop pane's fetches, and non-browser clients

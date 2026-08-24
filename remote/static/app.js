@@ -124,6 +124,17 @@
     return !!block && typeof block === 'object' && block.type === 'image';
   }
 
+  // A tool result names the image, so the URL comes from whatever the tool
+  // read, and `img src` fetches it the moment it is in the DOM. `javascript:`
+  // does not run from `src`, but every other scheme is still an outbound
+  // request the transcript made on the user's behalf, so only `https:` and
+  // `data:` are rendered -- the same instinct as the markdown link renderer,
+  // which matches `https?://` and nothing else (ISSUE-041).
+  function isSafeImageUrl(url) {
+    if (typeof url !== 'string') return false;
+    return /^https:/i.test(url) || /^data:image\//i.test(url);
+  }
+
   // A tool that returns a picture -- Read on a PNG, a screenshot driver --
   // sends an image block, and `JSON.stringify` on one produces 60,000
   // characters of base64 where the picture should be. Pull them out and hand
@@ -136,7 +147,7 @@
       const source = block.source || {};
       if (source.type === 'base64' && source.data && source.media_type) {
         out.push({ src: `data:${source.media_type};base64,${source.data}`, bytes: source.data.length });
-      } else if (source.type === 'url' && source.url) {
+      } else if (source.type === 'url' && isSafeImageUrl(source.url)) {
         out.push({ src: source.url, bytes: 0 });
       }
     }

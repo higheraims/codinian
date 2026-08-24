@@ -252,7 +252,9 @@ def create_tag(root: Path, name: str, message: str | None) -> dict:
     if not name or not name.strip():
         raise ValueError("tag name must not be empty")
 
-    args = ["tag", "-a", name, "-m", message] if message else ["tag", name]
+    # `--` before the name, as `commit()` does, so a name that starts with a
+    # dash is a tag name and not a flag.
+    args = ["tag", "-a", "-m", message, "--", name] if message else ["tag", "--", name]
     result = _git(root, *args)
     if result.returncode != 0:
         raise GitError("git tag failed", returncode=result.returncode, stderr=result.stderr)

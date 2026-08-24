@@ -129,6 +129,13 @@ carrying an `Origin` header from a different host gets
 `403 {"error": "bad_origin"}`, so a page on another site cannot drive the API
 using a token it somehow obtained.
 
+The origin check is a second lock, not the security boundary. `Origin` and
+`Host` both come from the caller, and an attacker who rebinds a hostname they
+control to your bind address sends the two consistently, so the check passes.
+The token is what actually protects a state-changing route. Treat the origin
+check as what closes the easy path — a random page in another tab — and the
+token as the thing worth keeping secret.
+
 ```
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8787/api/sessions
 ```

@@ -10,7 +10,11 @@ license = "GPL-3.0-only"
 license-files = ["LICENSE"]
 authors = [{name = "higheraims", email = "122185704+higheraims@users.noreply.github.com"}]
 requires-python = ">=3.12"
-dependencies = ["aiohttp", "claude-agent-sdk", "qrcode"]
+# aiohttp carries the remote server, so it faces whatever reaches the bind
+# address. Floored at 3.12.14, the release that fixed the last request-smuggling
+# hole in the pure-Python HTTP parser (CVE-2025-53643), rather than left
+# unbounded to resolve to whatever is already installed (ISSUE-041).
+dependencies = ["aiohttp>=3.12.14", "claude-agent-sdk", "qrcode"]
 
 [project.urls]
 Homepage = "https://github.com/higheraims/codinian"
