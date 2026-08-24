@@ -59,6 +59,11 @@ from session import SessionManager
 # gives up and reports the session as failed.
 LOOP_START_TIMEOUT = 10.0
 
+# How long a quit waits for every live session to disconnect (ISSUE-037).
+# Long enough for a `claude` subprocess to be told and go, short enough that a
+# stuck one does not read as an app that will not close.
+SHUTDOWN_TIMEOUT = 5.0
+
 # How hard to look for the title the CLI generates for a conversation, after a
 # turn ends. It is written a beat behind the turn it summarises, and a session
 # left alone after one question has no next turn to try again on.
@@ -749,3 +754,25 @@ class SdkRuntime:
         for session in list(self._sessions.values()):
             await session.close()
         self._sessions.clear()
+
+    def close_all_threadsafe(self, timeout: float = SHUTDOWN_TIMEOUT) -> None:
+        """Disconnect every live session from a non-loop thread, and wait.
+
+        This one waits where `close_threadsafe` does not, because it runs on
+        the way out: the loop lives in a daemon thread, so the moment the GTK
+        main loop returns the process ends and that thread is cut off with
+        whatever `claude` subprocesses it owns still attached. Waiting is the
+        whole point (ISSUE-037).
+
+        Bounded, though. A subprocess that will not go is not worth hanging a
+        quit on -- the process is about to exit and take it with it either
+        way -- so the timeout is a ceiling on how long a clean exit is allowed
+        to cost, not a promise every session answered.
+        """
+        if self._loop is None or not self._sessions:
+            return
+        try:
+            future = asyncio.run_coroutine_threadsafe(self.close_all(), self._loop)
+            future.result(timeout)
+        except Exception:
+            pass  # quitting is no place to raise

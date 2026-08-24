@@ -72,6 +72,9 @@ class CodinianApp(Adw.Application):
         self._db = None
         self._win = None
         self.connect("activate", self._on_activate)
+        # Every live session's `claude` subprocess is disconnected here rather
+        # than left to the daemon thread being cut off at exit (ISSUE-037).
+        self.connect("shutdown", self._on_shutdown)
 
     def _on_activate(self, _app):
         # Before the window is built, so it never paints in the wrong palette
@@ -120,6 +123,16 @@ class CodinianApp(Adw.Application):
             return  # a startup nicety is no reason to fail to start
         for session in sessions[-50:]:
             self.withdraw_notification(f"session-{session.id}")
+
+    def _on_shutdown(self, _app):
+        """Tell every live session to disconnect before the process goes.
+
+        The asyncio loop runs in a daemon thread, so without this the thread is
+        simply abandoned when the GTK main loop returns and each session's
+        `claude` subprocess finds out by having its pipe closed under it. This
+        is bounded (see `close_all_threadsafe`): a quit that hangs would be a
+        worse bug than the one it fixes."""
+        self._runtime.close_all_threadsafe()
 
     def _on_focus_session(self, _action, param):
         if self._win is not None:
