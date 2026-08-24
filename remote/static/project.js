@@ -269,6 +269,7 @@
     issuesSort: 'id',
     currentIssue: null,     // full Issue being viewed/edited
     issueDraft: null,       // editable copy of currentIssue
+    issuePristine: null,    // signature of issueDraft as loaded; see issueDirty
     issueSaving: false,
     issueSaveError: null,
     sectionPreview: new Set(), // section indices currently showing preview
@@ -425,10 +426,39 @@
   // filesystem watcher, a per-project subscription, or any new protocol.
   //
   // It refuses while anything is open for editing. loadProject re-renders the
-  // tab from scratch and there is no dirty tracking here to restore a draft
-  // from, so a refresh mid-edit would discard what you had typed.
+  // tab from scratch and there is no draft to restore afterwards, so a refresh
+  // mid-edit would discard what you had typed.
+  //
+  // An issue is the one case where being open is not the same as being edited.
+  // There is no read-only mode: opening one for a look fills `issueDraft` in
+  // exactly as opening one to change it does, and nothing clears it, so gating
+  // on the draft's existence meant a single look at a single issue switched
+  // focus-refresh off for the rest of the page's life -- Files and Git tabs
+  // included (ISSUE-039). What blocks a refresh is the draft having actually
+  // diverged from what was loaded.
+  function issueDirty() {
+    if (!state.issueDraft) return false;
+    return issueDraftSignature(state.issueDraft) !== state.issuePristine;
+  }
+
+  // Everything `saveIssue` would send, in a stable order, as one string to
+  // compare against the snapshot taken when the draft was made. Deliberately
+  // not `extraFrontmatter`: it is carried through verbatim and nothing in the
+  // editor can change it.
+  function issueDraftSignature(draft) {
+    return JSON.stringify([
+      draft.id, draft.title, draft.status, draft.type, draft.area,
+      draft.related,
+      draft.sections.map((s) => [s.heading, s.body]),
+    ]);
+  }
+
+  function markIssueDraftPristine() {
+    state.issuePristine = state.issueDraft ? issueDraftSignature(state.issueDraft) : null;
+  }
+
   function isEditing() {
-    return Boolean(state.fileEditing || state.issueDraft ||
+    return Boolean(state.fileEditing || issueDirty() ||
                    state.fileNewForm || state.fileRenamePath);
   }
 
@@ -965,6 +995,7 @@
     }
     state.currentIssue = data.issue;
     state.issueDraft = cloneIssueForEdit(data.issue);
+    markIssueDraftPristine();
     state.issueSaveError = null;
     state.sectionPreview = new Set();
     const listEl = tabPanels.issues.querySelector('.issues-list');
@@ -1003,6 +1034,9 @@
       extraFrontmatter: {},
       sections: (schema.sections || []).map((heading) => ({ heading, body: '' })),
     };
+    // A blank form is not an edit. It becomes one on the first keystroke, and
+    // until then a focus-refresh is welcome to take it away.
+    markIssueDraftPristine();
     state.issueSaveError = null;
     state.sectionPreview = new Set();
     urlState.issue = null;
@@ -1241,6 +1275,7 @@
       }
       state.currentIssue = data.issue;
       state.issueDraft = cloneIssueForEdit(data.issue);
+      markIssueDraftPristine();
       urlState.issue = data.issue.id;
       syncUrl();
       // Refresh the list so the new/edited issue shows up with current data.
