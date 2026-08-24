@@ -33,3 +33,5 @@ treated as settled.
   SVG referenced at runtime (`window.py` loads `docs/art/codinian.svg`), so it
   cannot simply be dropped without a replacement. 
    - Sourced vectors from openclipart.org and replaced olive wreath.
+- 2026-08-24
+   - embedded source URL in SVG art to credit the openclipart source for wreath
