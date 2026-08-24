@@ -75,8 +75,10 @@ and the web panes.
   and Pango 1.0. On Fedora these are `python3-gobject`, `gtk4`, `libadwaita`,
   `webkitgtk6.0`, and `vte291-gtk4`; other distributions ship equivalents under
   their own names.
-- Python packages `aiohttp`, `claude-agent-sdk`, and `qrcode` (the last is
-  optional; without it the remote tab still works but draws no QR code).
+- Python packages `aiohttp` 3.12.14 or newer, `claude-agent-sdk`, and `qrcode`
+  (the last is optional; without it the remote tab still works but draws no QR
+  code). The aiohttp floor is a security one: it carries the server, and
+  3.12.14 fixed the last request-smuggling hole in its pure-Python HTTP parser.
 
 The GTK stack is deliberately installed from the distribution rather than from
 PyPI, because PyGObject builds against the system libraries.
@@ -88,7 +90,7 @@ Clone the repo and run it in place:
 ```bash
 git clone <your-fork-url> codinian
 cd codinian
-pip install --user aiohttp claude-agent-sdk qrcode   # if not already present
+pip install --user 'aiohttp>=3.12.14' claude-agent-sdk qrcode   # if not already present
 python3 main.py
 ```
 

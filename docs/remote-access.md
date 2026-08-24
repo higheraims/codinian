@@ -145,6 +145,18 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:8787/api/sessions
 The `output` and `inject` endpoints belong to the older terminal-mirror path
 and act on `terminal` sessions. SDK sessions are driven over the WebSocket.
 
+The two `image` routes are the one place a token rides in a URL the page builds
+for itself. A `tool_result` carrying a picture holds a reference rather than the
+image (see [transcript-protocol.md](transcript-protocol.md)), the client renders
+it with an `img`, and an `img` cannot send an `Authorization` header, so the
+token goes in the query string exactly as it does for the WebSocket. Same-origin
+requests, `referrerpolicy="no-referrer"` on the elements, and an access log the
+server never turns on keep it out of the usual places; a reverse proxy in front
+of the app is the exception, since it sees whole request URLs. The bytes come
+back with a matched `image/...` content type, `nosniff`, and
+`default-src 'none'; sandbox`, because they are a tool result rather than
+anything this app wrote.
+
 ## WebSocket
 
 `/api/ws` speaks the event protocol in
