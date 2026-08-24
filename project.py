@@ -25,7 +25,24 @@ from pathlib import Path, PurePosixPath
 
 REGISTRY_PATH = Path.home() / ".local/share/codinian/projects.json"
 
-SETTINGS_RELPATH = ".codinian/settings.json"
+# Settings have lived under three directory names, one per rename of the app.
+# Reads walk this tuple newest first, so a repo that was never migrated keeps
+# working instead of silently falling back to DEFAULT_SETTINGS; writes always
+# land in the current one, so a repo migrates the first time a setting changes.
+SETTINGS_DIRS = (".codinian", ".codigulus", ".claudius")
+SETTINGS_RELPATH = f"{SETTINGS_DIRS[0]}/settings.json"
+
+
+def settings_path(root: str | Path) -> Path:
+    """The settings file to read for `root`: the first that exists among the
+    current and former directory names, else the current one. Returns a path
+    that may not exist; callers already handle a missing file."""
+    base = Path(root)
+    for name in SETTINGS_DIRS:
+        candidate = base / name / "settings.json"
+        if candidate.exists():
+            return candidate
+    return base / SETTINGS_RELPATH
 
 REGISTRY_VERSION = 1
 SETTINGS_VERSION = 1
@@ -237,9 +254,10 @@ def _deep_merge(defaults: dict, override: dict) -> dict:
 
 def load_settings(root: str | Path) -> dict:
     """The effective settings for a project: DEFAULT_SETTINGS deep-merged
-    under whatever is in `<root>/.codinian/settings.json`. A missing or
+    under whatever `settings_path` resolves to, so a repo still on
+    `.codigulus/` or `.claudius/` is read rather than ignored. A missing or
     corrupt file yields the defaults untouched."""
-    path = Path(root) / SETTINGS_RELPATH
+    path = settings_path(root)
     if not path.exists():
         return json.loads(json.dumps(DEFAULT_SETTINGS))  # deep copy
 
@@ -254,8 +272,9 @@ def load_settings(root: str | Path) -> dict:
 
 
 def settings_override(root: str | Path, key: str):
-    """What `<root>/.codinian/settings.json` actually says for `key`, or None
-    when the file does not mention it.
+    """What the project's settings file actually says for `key`, or None
+    when the file does not mention it. The file is whichever of the current
+    and former directory names `settings_path` finds.
 
     `load_settings` merges DEFAULT_SETTINGS, so every key is always present and
     a repo that never expressed a preference is indistinguishable from one that
@@ -263,7 +282,7 @@ def settings_override(root: str | Path, key: str):
     fallback: without this, a project with no `default_permission_mode` of its
     own would override the user's global choice with the default (ISSUE-030).
     """
-    path = Path(root) / SETTINGS_RELPATH
+    path = settings_path(root)
     if not path.exists():
         return None
     try:
