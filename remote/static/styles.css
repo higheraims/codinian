@@ -1678,7 +1678,19 @@ button { cursor: pointer; }
   display: none;
 }
 
-@media (max-width: 820px) {
+/* Narrow, or small enough that the sidebar cannot be spared. A phone in
+   landscape is 844px wide on an iPhone 14 and 915px on a Pixel 7, both over the
+   820px this used to test alone, so rotating to read something long switched
+   the app to the desktop layout on a viewport 390px tall: the sidebar came back
+   and took 300px of the width while the transcript fell from 526px of height to
+   107px. Rotating lost text rather than gaining it.
+
+   The second condition pairs short with narrow-ish rather than testing height
+   alone. A 1280x520 desktop window is short too, and it wants the trimmed
+   chrome below, but at that width there is room for the session list and taking
+   it away would be a worse trade. 1024px clears every phone in landscape and no
+   tablet, which is at least 768px tall in either orientation. */
+@media (max-width: 820px), (max-height: 560px) and (max-width: 1024px) {
   #sidebar-toggle { display: inline-flex; }
 
   #sidebar {
@@ -1703,6 +1715,42 @@ button { cursor: pointer; }
   #app.sidebar-open #sidebar-backdrop { display: block; }
 
   .bubble-group { max-width: 92%; }
+}
+
+/* Short viewports, which in practice means a phone held sideways. The chrome
+   above and below the transcript is a fixed 114px, which is 29% of a 390px
+   screen, so it is trimmed to buy back lines of text. Keyed on height alone
+   rather than orientation, since a short desktop window has the same problem
+   and the same answer. */
+@media (max-height: 560px) {
+  /* The mark stays: it is the only thing in the bar that says which app this
+     is, and it is already the smallest a wreath can be drawn at (ISSUE-021).
+     The padding around it does not need to. */
+  #topbar { padding: .3rem 1rem; }
+  #pane-header { padding: .35rem 1rem; }
+  #pane-title { font-size: .9rem; }
+  #composer { padding: .4rem 1rem; }
+  #transcript { padding: .5rem 1rem .75rem; gap: .5rem; }
+
+  /* The composer keeps a floor of two lines so it does not collapse to a slot
+     you cannot see what you typed in, but it gives up its ceiling: on a screen
+     this short, a growing message box would push the transcript out entirely. */
+  #composer-input { max-height: 4.5rem; }
+
+  /* The usage footer is the tallest thing here after the transcript, because
+     every figure is a label stacked over a value. Laid out inline instead it
+     says the same in half the height. The reset time goes: of everything on
+     this row it is the one nobody acts on within the next minute, and rotating
+     back brings it straight back. */
+  .session-footer { padding: .3rem 1rem; gap: 1rem; }
+  .session-totals-row, .plan-usage-row { gap: .8rem; }
+  .total-stat, .plan-window {
+    flex-direction: row;
+    align-items: baseline;
+    gap: .35rem;
+  }
+  .plan-window.is-age { padding-left: .8rem; }
+  .plan-window-reset { display: none; }
 }
 
 .approval-resolved-line .decided-by {
