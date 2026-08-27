@@ -79,7 +79,11 @@
         <div id="plan-usage" class="plan-usage" hidden></div>
         <div id="permission-mode-control" class="permission-mode-control" hidden>
           <label for="permission-mode-select">Mode</label>
-          <select id="permission-mode-select"></select>
+          <!-- Named twice on purpose. The visible label is hidden on a phone,
+               where it costs more width than it earns beside a control whose
+               value already reads "Auto", and a display:none label is dropped
+               from the accessibility tree along with the name it was giving. -->
+          <select id="permission-mode-select" aria-label="Permission mode"></select>
           <span id="permission-mode-error" class="permission-mode-error" hidden></span>
         </div>
       </div>

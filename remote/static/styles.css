@@ -1736,21 +1736,57 @@ button { cursor: pointer; }
      you cannot see what you typed in, but it gives up its ceiling: on a screen
      this short, a growing message box would push the transcript out entirely. */
   #composer-input { max-height: 4.5rem; }
+}
 
-  /* The usage footer is the tallest thing here after the transcript, because
-     every figure is a label stacked over a value. Laid out inline instead it
-     says the same in half the height. The reset time goes: of everything on
-     this row it is the one nobody acts on within the next minute, and rotating
-     back brings it straight back. */
-  .session-footer { padding: .3rem 1rem; gap: 1rem; }
-  .session-totals-row, .plan-usage-row { gap: .8rem; }
+/* The usage footer, on any screen too small to give it a quarter of itself.
+   Measured on an iPhone SE in portrait it was 167px, a quarter of the phone,
+   because every figure is a label stacked over its value and the row then wraps
+   three deep. Inline pairs say the same thing in a third of the height.
+
+   The mode control is the other half of it: a select sizes to its widest
+   option, and "Default (ask each time)" made a control reading "Auto" 212px
+   wide, half the width of a 412px screen. Capped, and its visible label
+   dropped, since the value already says what it is. */
+@media (max-width: 820px), (max-height: 560px) {
+  /* One wrapping row of pairs, not three boxes that each wrap privately.
+     `display: contents` drops the totals and plan wrappers out of the layout so
+     every figure becomes a direct child of the footer and they all pack against
+     each other. As three boxes this cost either a collision or a wasted row:
+     the boxes cannot shrink below their widest pair, so at 390px "SESSION
+     within limit" ran under the select, and letting the footer wrap instead
+     pushed the select onto a row of its own. The `[hidden]` rules still win,
+     being the more specific selector, so an empty group still disappears. */
+  .session-footer { padding: .35rem .9rem; gap: .25rem .8rem; flex-wrap: wrap; }
+  .session-totals, .plan-usage,
+  .session-totals-row, .plan-usage-row { display: contents; }
+  .permission-mode-control { margin-left: auto; flex-shrink: 0; }
+  .session-totals-row, .plan-usage-row { gap: .3rem .8rem; }
   .total-stat, .plan-window {
     flex-direction: row;
     align-items: baseline;
-    gap: .35rem;
+    gap: .3rem;
   }
-  .plan-window.is-age { padding-left: .8rem; }
+  .total-stat-label, .plan-window-label { font-size: .62rem; white-space: nowrap; }
+  /* "within limit" broke across two lines and took the whole row with it. A
+     figure and its label are one thing; the row wraps between pairs instead. */
+  .total-stat-value, .plan-window-value { font-size: .78rem; white-space: nowrap; }
+  .total-stat, .plan-window { white-space: nowrap; }
+  /* The divider earned its keep separating a column from a column. Between two
+     inline pairs on a wrapping row it just lands in odd places. */
+  .plan-window.is-age { border-left: none; padding-left: 0; }
+  /* Kept, unlike the reset time: this one says whether to believe the number
+     beside it, which is the whole reason it is on the row and not in a
+     tooltip. */
+  .plan-window-age { font-size: .74rem; }
   .plan-window-reset { display: none; }
+
+  .permission-mode-control { gap: .3rem; }
+  .permission-mode-control label { display: none; }
+  #permission-mode-select {
+    max-width: 7.5rem;
+    text-overflow: ellipsis;
+    padding-right: 1.4rem;
+  }
 }
 
 .approval-resolved-line .decided-by {
