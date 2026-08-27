@@ -1997,10 +1997,53 @@
     return nodes.map((n) => (typeof n === 'string' ? document.createTextNode(n) : n));
   }
 
-  // A small markdown-lite renderer: headings, bullet and numbered lists,
-  // fenced code blocks, and the inline formatting above. Anything that doesn't
-  // match one of those block forms falls back to a paragraph with its line
-  // breaks preserved. Built entirely with DOM nodes and textContent, never
+  // A pipe table's second line, which both confirms the block is a table and
+  // sets each column's alignment (ISSUE-045). Requiring a pipe here is what keeps a line of
+  // dashes under a paragraph from turning the paragraph into a header row.
+  const TABLE_DELIM_RE = /^\s*\|?(\s*:?-+:?\s*\|)+\s*:?-*:?\s*\|?\s*$/;
+
+  function isTableDelimiter(line) {
+    return line != null && line.indexOf('|') !== -1 && TABLE_DELIM_RE.test(line);
+  }
+
+  // Splits a row on its unescaped pipes, so a cell written as `a \| b` keeps the
+  // pipe as text. The border pipes produce an empty cell at each end, which is
+  // dropped only when the row actually had that border; a table written without
+  // one keeps its first and last cells, empty or not.
+  function splitTableRow(line) {
+    const s = line.trim();
+    const cells = [];
+    let cur = '';
+    for (let k = 0; k < s.length; k++) {
+      if (s[k] === '\\' && s[k + 1] === '|') {
+        cur += '|';
+        k++;
+      } else if (s[k] === '|') {
+        cells.push(cur);
+        cur = '';
+      } else {
+        cur += s[k];
+      }
+    }
+    cells.push(cur);
+    if (s.startsWith('|')) cells.shift();
+    if (s.length > 1 && s.endsWith('|')) cells.pop();
+    return cells.map((c) => c.trim());
+  }
+
+  function tableAlignClass(delimCell) {
+    const cell = String(delimCell == null ? '' : delimCell);
+    const left = cell.startsWith(':');
+    const right = cell.endsWith(':');
+    if (left && right) return 'md-align-center';
+    if (right) return 'md-align-right';
+    return null;
+  }
+
+  // A small markdown-lite renderer: headings, bullet and numbered lists, pipe
+  // tables, fenced code blocks, and the inline formatting above. Anything that
+  // doesn't match one of those block forms falls back to a paragraph with its
+  // line breaks preserved. Built entirely with DOM nodes and textContent, never
   // innerHTML, since every string it renders comes off the wire.
   //
   // Used for three things now: a plan, an assistant message, and a thinking
@@ -2041,7 +2084,8 @@
           i++;
           continue;
         }
-        if (cur.trim() === '' || /^```/.test(cur) || /^#{1,6}\s+/.test(cur) || /^[-*]\s+/.test(cur) || /^\d+\.\s+/.test(cur)) {
+        if (cur.trim() === '' || /^```/.test(cur) || /^#{1,6}\s+/.test(cur) ||
+            /^[-*]\s+/.test(cur) || /^\d+\.\s+/.test(cur) || /^\s*\|/.test(cur)) {
           break;
         }
         li.appendChild(document.createTextNode(' '));
@@ -2075,6 +2119,37 @@
         for (const node of parseInlineMarkdown(heading[2])) headingEl.appendChild(node);
         root.appendChild(headingEl);
         i++;
+        continue;
+      }
+
+      if (/^\s*\|/.test(line) && i + 1 < total && isTableDelimiter(lines[i + 1])) {
+        flushParagraph();
+        const headerCells = splitTableRow(line);
+        const aligns = splitTableRow(lines[i + 1]).map(tableAlignClass);
+        i += 2;
+        const headRow = h('tr', {});
+        headerCells.forEach((cell, col) => {
+          const th = h('th', { class: aligns[col] });
+          for (const node of parseInlineMarkdown(cell)) th.appendChild(node);
+          headRow.appendChild(th);
+        });
+        const body = h('tbody', {});
+        while (i < total && /^\s*\|/.test(lines[i])) {
+          const cells = splitTableRow(lines[i]);
+          const row = h('tr', {});
+          // The header decides the column count. A short row is padded and a
+          // long one truncated, so a ragged table still lines up.
+          for (let col = 0; col < headerCells.length; col++) {
+            const td = h('td', { class: aligns[col] });
+            for (const node of parseInlineMarkdown(cells[col] || '')) td.appendChild(node);
+            row.appendChild(td);
+          }
+          body.appendChild(row);
+          i++;
+        }
+        const table = h('table', { class: 'md-table' }, [h('thead', {}, headRow), body]);
+        // A wide table scrolls inside the message rather than stretching it.
+        root.appendChild(h('div', { class: 'md-table-wrap' }, table));
         continue;
       }
 

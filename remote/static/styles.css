@@ -1009,6 +1009,21 @@ button { cursor: pointer; }
   padding: .05rem .3rem;
 }
 .md-code-block { margin: 0; }
+.md-table-wrap { overflow-x: auto; }
+.md-table { border-collapse: collapse; font-size: .92em; }
+.md-table th, .md-table td {
+  border: 1px solid var(--border);
+  padding: .3rem .6rem;
+  text-align: left;
+  vertical-align: top;
+  /* .md-body breaks anywhere to keep long paths inside a bubble. In a narrow
+     column that splits ordinary words, so a cell only breaks a word that has
+     no room on a line of its own. */
+  overflow-wrap: break-word;
+}
+.md-table th { background: var(--surface-2); font-weight: 600; }
+.md-table .md-align-center { text-align: center; }
+.md-table .md-align-right { text-align: right; }
 .approval-card .md-inline-code { background: var(--surface); }
 
 /* ---------- diff (Edit / MultiEdit / Write) ---------- */
