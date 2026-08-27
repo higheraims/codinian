@@ -106,6 +106,23 @@ class Project:
         }
 
 
+def sort_key(name: str, path: str) -> tuple[str, str]:
+    """The order projects are shown in, everywhere: by name, case-insensitively.
+
+    Registration order is what the registry file happens to hold, and it says
+    nothing a user could predict, so every surface sorts by this instead
+    (ISSUE-048). The path breaks ties, so two folders of the same name in
+    different parents keep a stable order between runs rather than swapping
+    places on a whim. `casefold` rather than `lower`, matching the directory
+    listing in files.py.
+
+    Takes the two fields rather than a Project so the GTK sidebar can call it
+    with a ProjectMeta dict, which is all its rows carry, without either side
+    restating the rule.
+    """
+    return (name.casefold(), path)
+
+
 def _atomic_write_json(path: Path, data: dict, *, mode: int | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
@@ -120,7 +137,12 @@ def load_registry() -> list[Project]:
     parse as JSON, yields an empty list rather than raising — the registry is
     rebuilt by re-adding projects, so failing startup over it would be worse
     than losing it. Individual malformed entries are dropped rather than
-    failing the whole load."""
+    failing the whole load.
+
+    Sorted by `sort_key`. This is the one place every consumer passes through
+    (the HTTP list endpoint, the GTK sidebar at startup, the new-session
+    dialog), so sorting here is what gives all three the same order without
+    each one restating the rule."""
     if not REGISTRY_PATH.exists():
         return []
     try:
@@ -148,7 +170,7 @@ def load_registry() -> list[Project]:
             )
         except KeyError:
             continue
-    return projects
+    return sorted(projects, key=lambda p: sort_key(p.name, p.path))
 
 
 def registry_generation() -> int:

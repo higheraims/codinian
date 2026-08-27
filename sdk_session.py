@@ -77,7 +77,21 @@ NAME_LOOKUP_DELAY = 4.0
 # call, `dontAsk` applies the settings files' allow rules and denies the rest.
 # Neither can be reproduced in the hook, so for these the hook returns no
 # decision and lets the call fall through to the CLI (ISSUE-027).
-MODE_DECIDES_ITSELF = frozenset({"auto", "dontAsk"})
+#
+# `plan` is here for a different reason (ISSUE-049). The CLI enforces plan mode
+# itself, and it enforces it harder than this hook can: it refuses every edit
+# without consulting the client at all, and it auto-approves read-only Bash. A
+# hook that asks about each call therefore added nothing but a card per `cat`
+# and per `grep`, which is what made a planning session unusable. Measured on
+# three read-only commands: three cards before, none after, and a `Write` in
+# the same session still went nowhere but the plan file.
+MODE_DECIDES_ITSELF = frozenset({"auto", "dontAsk", "plan"})
+
+# The one call plan mode must still put to the user. Deferring it would hand the
+# plan to the CLI expecting a client that approves plans, and Codinian is not
+# one, so the turn would park on a question nobody is shown (the ISSUE-008
+# hazard). Leaving a plan for review is a decision, not a tool call.
+ALWAYS_ASK = frozenset({"ExitPlanMode"})
 
 # How long deltas accumulate before one frame goes out (ISSUE-033).
 #
@@ -411,7 +425,10 @@ class SdkSession:
         if mode == "acceptEdits" and name in EDIT_TOOLS:
             return "allow"
         if mode in MODE_DECIDES_ITSELF:
-            return "defer"
+            # Checked here rather than at the top of the method: the reason is
+            # that deferring parks the turn, so it has no bearing on the two
+            # modes above, which answer rather than defer.
+            return None if name in ALWAYS_ASK else "defer"
         return None
 
     async def _pre_tool_use(self, input_data, tool_use_id, context):

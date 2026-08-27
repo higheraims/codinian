@@ -272,7 +272,6 @@
     issuePristine: null,    // signature of issueDraft as loaded; see issueDirty
     issueSaving: false,
     issueSaveError: null,
-    sectionPreview: new Set(), // section indices currently showing preview
 
     // git tab
     gitChecked: new Set(),  // paths checked for commit
@@ -998,7 +997,6 @@
     state.issueDraft = cloneIssueForEdit(data.issue);
     markIssueDraftPristine();
     state.issueSaveError = null;
-    state.sectionPreview = new Set();
     const listEl = tabPanels.issues.querySelector('.issues-list');
     if (listEl) renderIssuesList(listEl);
     renderIssueEditorPane();
@@ -1039,7 +1037,6 @@
     // until then a focus-refresh is welcome to take it away.
     markIssueDraftPristine();
     state.issueSaveError = null;
-    state.sectionPreview = new Set();
     urlState.issue = null;
     syncUrl();
     renderIssueEditorPane();
@@ -1223,17 +1220,22 @@
     btnHeading.addEventListener('click', () => prefixLines('## '));
     for (const b of [btnBold, btnItalic, btnCode, btnLink, btnList, btnHeading]) toolbar.appendChild(b);
 
-    const previewToggle = h('button', { class: 'preview-toggle' + (state.sectionPreview.has(idx) ? ' is-active' : ''), type: 'button' },
-      state.sectionPreview.has(idx) ? 'Editing' : 'Preview');
+    // Preview is a flag on the section, not an index into the draft. It used to
+    // be a Set of positions, which meant removing or adding a section above one
+    // in preview left the flag pointing at whichever section had shifted into
+    // that slot. Nothing enumerates section properties (`issueDraftSignature`
+    // and `saveIssue` both name heading and body), so the flag rides along
+    // without reaching the wire or the dirty check.
+    const previewToggle = h('button', { class: 'preview-toggle' + (section.preview ? ' is-active' : ''), type: 'button' },
+      section.preview ? 'Editing' : 'Preview');
     previewToggle.addEventListener('click', () => {
-      if (state.sectionPreview.has(idx)) state.sectionPreview.delete(idx);
-      else state.sectionPreview.add(idx);
+      section.preview = !section.preview;
       renderIssueEditorPane();
     });
     toolbar.appendChild(previewToggle);
 
     box.appendChild(toolbar);
-    if (state.sectionPreview.has(idx)) {
+    if (section.preview) {
       const preview = h('div', { class: 'section-preview' });
       preview.appendChild(renderMarkdown(section.body));
       box.appendChild(preview);

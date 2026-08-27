@@ -436,8 +436,20 @@
   font-weight: 600;
   color: var(--text);
 }
-.remove-section-btn { background: none; border: none; color: var(--text-faint); font-size: .8rem; }
-.remove-section-btn:hover { color: var(--red); }
+/* Borderless and --text-faint read as a disabled control: 2.9:1 against the
+   header in dark, 2.5:1 in light, both under the 3:1 floor, and dimming is how
+   every actually-disabled button in this app is drawn. The button was always
+   live. Styled like .btn-remove above, which is the same action on a project
+   card. */
+.remove-section-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  padding: .2rem .55rem;
+  font-size: .8rem;
+}
+.remove-section-btn:hover { color: var(--red); border-color: var(--red); }
 .md-toolbar { display: flex; gap: .25rem; padding: .35rem .5rem; border-bottom: 1px solid var(--border); background: var(--surface); flex-wrap: wrap; }
 .md-toolbar button {
   background: none;

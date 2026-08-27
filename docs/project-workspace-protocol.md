@@ -89,7 +89,9 @@ status. Shared codes: `bad_path`, `not_found`, `not_a_repo`, `git_failed`,
 
 ### Projects
 
-- `GET /api/projects` → `{"projects": [ProjectMeta, ...]}`
+- `GET /api/projects` → `{"projects": [ProjectMeta, ...]}`. Sorted by `name`,
+  case-insensitively, with `path` breaking ties; clients render the array as
+  received and do not re-sort it (ISSUE-048).
 - `POST /api/projects` `{"path": "/abs/path"}` → `{"project": ProjectMeta}`.
   `404` if the folder does not exist, and adding an already-registered folder
   returns the existing entry rather than a duplicate.

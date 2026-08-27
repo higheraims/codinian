@@ -237,6 +237,7 @@ class CodinianWindow(Adw.ApplicationWindow):
         self._project_list = Gtk.ListBox()
         self._project_list.add_css_class("navigation-sidebar")
         self._project_list.set_selection_mode(Gtk.SelectionMode.SINGLE)
+        self._project_list.set_sort_func(self._compare_project_rows)
         self._project_list.connect("row-selected", self._on_project_row_selected)
         sidebar_box.append(self._project_list)
 
@@ -886,6 +887,22 @@ class CodinianWindow(Adw.ApplicationWindow):
         webview = self._build_webview_pane(self._project_pane_url(project_id))
         self._project_webviews[project_id] = webview
         return webview
+
+    def _compare_project_rows(self, row_a, row_b, *_) -> int:
+        """Keep the Projects section in `project.sort_key` order.
+
+        `load_registry` already sorts, so this is not what orders the list at
+        startup; it is what keeps a project added while the app is running from
+        sitting at the bottom until the next restart, since `_add_project_row`
+        can only append (ISSUE-048). A row's metadata is in `_project_meta`
+        before the row is appended, so it is always there to read here.
+        """
+        def key(row):
+            meta = self._project_meta.get(getattr(row, "_project_id", ""), {})
+            return project.sort_key(meta.get("name", ""), meta.get("path", ""))
+
+        key_a, key_b = key(row_a), key(row_b)
+        return (key_a > key_b) - (key_a < key_b)
 
     def _add_project_row(self, meta: dict) -> None:
         pid = meta["id"]
