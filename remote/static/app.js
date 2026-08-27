@@ -1542,8 +1542,24 @@
     return `$${usd.toFixed(4)}`;
   }
 
+  // Footer counts, rounded to what anyone actually reads off them. A running
+  // total is a sense of scale, not an audit: nobody acts on the difference
+  // between 204,317 and 204,000, and the digits were costing the footer a row
+  // it then made the mode selector share.
+  //
+  // Under a thousand, the number itself. From there to ten thousand, the
+  // nearest 500, because that range is where the second digit still says
+  // something. Above it, the nearest thousand. The exact figure is on the
+  // element's title for anyone who wants it.
   function formatTokenCount(n) {
-    return (n || 0).toLocaleString();
+    const v = n || 0;
+    if (v < 1000) return String(v);
+    if (v < 10000) {
+      const k = Math.round(v / 500) * 500 / 1000;
+      // 2k, not 2.0k; 1.5k keeps its half.
+      return `${Number.isInteger(k) ? k : k.toFixed(1)}k`;
+    }
+    return `${Math.round(v / 1000)}k`;
   }
 
   // Compact form for the sidebar, where every row is fighting for width:
@@ -1750,22 +1766,28 @@
     sessionTotalsEl.hidden = false;
     updateSessionFooter();
 
-    function stat(label, value) {
+    function stat(label, value, exact) {
       return h('div', { class: 'total-stat' }, [
         h('span', { class: 'total-stat-label' }, label),
-        h('span', { class: 'total-stat-value' }, value),
+        h('span', exact == null
+          ? { class: 'total-stat-value' }
+          : { class: 'total-stat-value', title: `${exact.toLocaleString()} tokens` }, value),
       ]);
+    }
+
+    function tokenStat(label, count) {
+      return stat(label, formatTokenCount(count), count || 0);
     }
 
     const row = h('div', { class: 'session-totals-row' });
     if (hasCost) row.appendChild(stat('Cost', formatCost(meta.cost_usd)));
-    row.appendChild(stat('Input', formatTokenCount(tokens.input)));
-    row.appendChild(stat('Output', formatTokenCount(tokens.output)));
+    row.appendChild(tokenStat('Input', tokens.input));
+    row.appendChild(tokenStat('Output', tokens.output));
     if (displayPrefs.show_cache_tokens) {
-      row.appendChild(stat('Cache create', formatTokenCount(tokens.cache_creation)));
+      row.appendChild(tokenStat('Cache create', tokens.cache_creation));
       // Cache reads run far larger than every other counter and would drown
       // them out at the front of the row, so it goes last.
-      row.appendChild(stat('Cache read', formatTokenCount(tokens.cache_read)));
+      row.appendChild(tokenStat('Cache read', tokens.cache_read));
     }
     if (meta.totals_cover_this_run_only) {
       // Three words on the row rather than a sentence under it. The caveat
