@@ -109,6 +109,19 @@ up to N ignores anything `<= N`. Backlog replay (below) uses it too.
   Emitted after the decision is made, from any client. The renderer replaces the
   pending approval card with its resolved state.
 
+- **`question_request`** `{ request_id: string, tool_use_id: string, questions: Question[] }`
+  Claude is asking the user something rather than asking to do something
+  (ISSUE-050). Each `Question` is `{ question, header, multiSelect, options: [{
+  label, description, preview? }] }`, 1-4 questions with 2-4 options each. The
+  session is blocked until a `question_resolved` with the same `request_id`
+  arrives. The renderer shows the options as buttons plus a freeform box; it
+  does not show Deny, because refusing a question only makes the model guess.
+
+- **`question_resolved`** `{ request_id: string, tool_use_id: string, answers: object, response: string|null, answered_by: string|null }`
+  `answers` maps question text to the chosen label, comma-separated for a
+  multi-select. Empty `answers` with a null `response` means the user skipped,
+  which is what the CLI itself does when a question times out.
+
 - **`usage`** `{ is_error: boolean, total_cost_usd: number|null, tokens: object|null, result_text: string|null }`
   End of a turn. Maps from the SDK `ResultMessage`. Feeds the cost/token footer
   (ISSUE-011).
@@ -164,7 +177,8 @@ Derived from events, not from output timing:
 `initializing` · `working` · `awaiting_approval` · `awaiting_input` · `done` · `error`
 
 - `working`: a turn is in flight (text/tool activity).
-- `awaiting_approval`: at least one `approval_request` is pending.
+- `awaiting_approval`: at least one `approval_request` or `question_request` is
+  pending.
 - `awaiting_input`: the turn finished (`usage` seen) and the session is idle,
   waiting for the next user message.
 - `done`: the SDK session ended.
@@ -198,8 +212,10 @@ Messages are JSON, one per frame.
   every session, including approvals raised before this client connected.
 
 - `{ "t": "inbox_event", "event": TranscriptEvent, "session": SessionMeta }`
-  An `approval_request` or `approval_resolved` from any session, sent to inbox
-  subscribers whatever they have open (ISSUE-010). A client subscribed to that
+  An `approval_request`, `approval_resolved`, `question_request` or
+  `question_resolved` from any session, sent to inbox subscribers whatever they
+  have open (ISSUE-010). A question shows as a row that opens the session; the
+  picker itself stays in the transcript. A client subscribed to that
   session receives both this and the ordinary `event`, so that it can update its
   transcript from one and its inbox from the other without either having to guess
   which was meant. Do not count an approval twice.
@@ -281,6 +297,13 @@ started twice.
   browser client omitted it to match, which is how approving from the pane came
   to do nothing at all. First valid resolution wins; later ones for the same
   `request_id` get the error reply (ISSUE-008).
+- `{ "t": "answer", "session_id": id, "request_id": id, "answers": object, "response": string|null }`
+  Answers a pending `question_request` (ISSUE-050). Separate from `resolve`
+  because it carries choices rather than a decision; one verb whose payload
+  changed shape depending on what it answered would be worse. Same rules
+  otherwise: `session_id` required, first valid answer wins, later ones get
+  `stale_or_unknown_request`. Send empty `answers` and a null `response` to
+  skip.
 - `{ "t": "create", "name": string, "workdir": string, "permission_mode": string, "resume": sdk_session_id|null, "text": string|null }`
   Creates an `sdk` session. `resume` seeds the transcript from that session's
   stored history (ISSUE-009); `text` is an optional first message. The desktop

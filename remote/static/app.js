@@ -845,7 +845,21 @@
         input: ev.input,
         session,
       });
-    } else if (ev.type === 'approval_resolved') {
+    } else if (ev.type === 'question_request') {
+      // A question parks the turn exactly as an approval does, so it belongs
+      // here or it is invisible from any other session (ISSUE-050). The row
+      // only offers a way in: the picker lives in the transcript, and a second
+      // copy of it in a panel this narrow would be worse than a short walk.
+      state.inbox.set(ev.request_id, {
+        session_id: ev.session_id,
+        request_id: ev.request_id,
+        tool_use_id: ev.tool_use_id,
+        name: 'AskUserQuestion',
+        questions: ev.questions || [],
+        isQuestion: true,
+        session,
+      });
+    } else if (ev.type === 'approval_resolved' || ev.type === 'question_resolved') {
       state.inbox.delete(ev.request_id);
     } else {
       return;
@@ -910,6 +924,24 @@
       selectSession(entry.session_id);
     });
     el.appendChild(h('div', { class: 'inbox-row-head' }, [sessionBtn, h('span', { class: 'inbox-row-tool' }, entry.name)]));
+
+    if (entry.isQuestion) {
+      const qs = entry.questions || [];
+      const body = h('div', { class: 'inbox-row-body' });
+      for (const q of qs) {
+        body.appendChild(h('div', { class: 'question-text' }, q.question || ''));
+      }
+      el.appendChild(body);
+      const open = h('button', { class: 'btn-approve', type: 'button' }, 'Open session to answer');
+      open.addEventListener('click', () => {
+        closeInboxPanel();
+        selectSession(entry.session_id);
+      });
+      el.appendChild(h('div', { class: 'approval-actions' }, [open]));
+      // No controls to hand back an error to: this row cannot answer, so it
+      // cannot be told its answer was stale.
+      return { el, controls: null };
+    }
 
     const body = h('div', { class: 'inbox-row-body' });
     const special = renderSpecialToolInput(entry.name, entry.input);
@@ -2524,6 +2556,28 @@
         break;
       }
 
+      case 'question_request': {
+        // At the root for the same reason an approval is: a question folded
+        // inside a collapsed subagent is one nobody answers.
+        breakBubble();
+        const qcard = buildQuestionCard(ev);
+        renderState.approvalCards.set(ev.request_id, qcard);
+        renderState.pendingApprovals.set(ev.request_id, qcard.el);
+        transcriptEl.appendChild(qcard.el);
+        updateApprovalJump();
+        break;
+      }
+
+      case 'question_resolved': {
+        breakBubble();
+        renderState.pendingApprovals.delete(ev.request_id);
+        const qc = renderState.approvalCards.get(ev.request_id);
+        if (qc) qc.resolve(ev);
+        else transcriptEl.appendChild(buildQuestionResolvedLine(ev));
+        updateApprovalJump();
+        break;
+      }
+
       case 'usage': {
         breakBubble(target);
         at.appendChild(buildUsageLine(ev));
@@ -2900,6 +2954,147 @@
         sendError.style.display = 'block';
       },
     };
+  }
+
+  // The model asking the user something, rather than asking to do something
+  // (ISSUE-050). Built like an approval card and registered in the same maps,
+  // so the jump-to-pending control and the stale-request handling cover it
+  // without knowing the difference. What it is not is an approval: there is no
+  // Deny, because refusing a question only makes the model guess. Skipping
+  // sends no choices, which is what the CLI does when a question times out.
+  function buildQuestionCard(ev) {
+    const questions = ev.questions || [];
+    const el = h('div', { class: 'question-card' });
+    el.appendChild(h('div', { class: 'question-card-head' },
+      questions.length > 1 ? `${questions.length} questions` : 'A question for you'));
+
+    const body = h('div', { class: 'question-card-body' });
+    const picked = new Map();   // question text -> Set of chosen labels
+
+    for (const q of questions) {
+      const qtext = q.question || '';
+      const multi = Boolean(q.multiSelect);
+      picked.set(qtext, new Set());
+
+      const block = h('div', { class: 'question-block' });
+      const head = h('div', { class: 'question-text' }, [
+        q.header ? h('span', { class: 'question-header-chip' }, q.header) : null,
+        h('span', {}, qtext),
+      ]);
+      block.appendChild(head);
+
+      const opts = h('div', { class: 'question-options' });
+      for (const opt of q.options || []) {
+        const btn = h('button', { class: 'question-option', type: 'button' }, [
+          h('span', { class: 'question-option-label' }, opt.label),
+          opt.description ? h('span', { class: 'question-option-desc' }, opt.description) : null,
+        ]);
+        btn.addEventListener('click', () => {
+          const chosen = picked.get(qtext);
+          if (multi) {
+            if (chosen.has(opt.label)) chosen.delete(opt.label);
+            else chosen.add(opt.label);
+          } else {
+            chosen.clear();
+            chosen.add(opt.label);
+            for (const sibling of opts.querySelectorAll('.question-option')) {
+              sibling.classList.remove('is-chosen');
+            }
+          }
+          btn.classList.toggle('is-chosen', chosen.has(opt.label));
+          updateSubmit();
+        });
+        opts.appendChild(btn);
+      }
+      block.appendChild(opts);
+      body.appendChild(block);
+    }
+
+    // The CLI adds an "Other" affordance to its own dialog rather than letting
+    // the model offer one, so this is the same escape hatch, not an extra.
+    const freeform = h('input', { class: 'question-freeform', type: 'text',
+                                  placeholder: 'or answer in your own words' });
+    freeform.addEventListener('input', updateSubmit);
+    body.appendChild(freeform);
+
+    const btnSend = h('button', { class: 'btn-approve', type: 'button' }, 'Answer');
+    const btnSkip = h('button', { class: 'btn-deny', type: 'button' }, 'Skip');
+    const actions = h('div', { class: 'approval-actions' }, [btnSend, btnSkip]);
+    const sendError = h('div', { class: 'approval-edit-error' });
+    sendError.style.display = 'none';
+
+    function anyChosen() {
+      if (freeform.value.trim()) return true;
+      for (const chosen of picked.values()) if (chosen.size) return true;
+      return false;
+    }
+    function updateSubmit() { btnSend.disabled = settled || !anyChosen(); }
+
+    let settled = false;
+    function answer(skip) {
+      if (settled) return;
+      settled = true;
+      btnSend.disabled = true;
+      btnSkip.disabled = true;
+      sendError.style.display = 'none';
+      const answers = {};
+      if (!skip) {
+        for (const [qtext, chosen] of picked) {
+          if (chosen.size) answers[qtext] = [...chosen].join(', ');
+        }
+      }
+      send({
+        t: 'answer',
+        session_id: ev.session_id,
+        request_id: ev.request_id,
+        answers,
+        response: (!skip && freeform.value.trim()) || null,
+      });
+    }
+
+    btnSend.addEventListener('click', () => answer(false));
+    btnSkip.addEventListener('click', () => answer(true));
+    updateSubmit();
+
+    body.appendChild(actions);
+    body.appendChild(sendError);
+    el.appendChild(body);
+
+    return {
+      el,
+      resolve(resolvedEv) {
+        settled = true;
+        el.replaceWith(buildQuestionResolvedLine(resolvedEv));
+      },
+      rejected(message) {
+        settled = false;
+        btnSkip.disabled = false;
+        updateSubmit();
+        sendError.textContent = message;
+        sendError.style.display = 'block';
+      },
+    };
+  }
+
+  function buildQuestionResolvedLine(resolvedEv) {
+    const answers = resolvedEv.answers || {};
+    const pairs = Object.entries(answers);
+    const el = h('div', { class: 'approval-resolved-line' });
+    el.appendChild(h('span', {}, 'Answered: '));
+    if (!pairs.length && !resolvedEv.response) {
+      el.appendChild(h('span', { class: 'decision-deny' }, 'skipped'));
+    } else {
+      const said = pairs.map(([q, a]) => a).join('; ');
+      el.appendChild(h('span', { class: 'decision-allow' },
+                       said || resolvedEv.response));
+      if (said && resolvedEv.response) {
+        el.appendChild(h('span', {}, `- ${resolvedEv.response}`));
+      }
+    }
+    if (resolvedEv.answered_by) {
+      el.appendChild(h('span', { class: 'decided-by' }, `by ${resolvedEv.answered_by}`));
+    }
+    return el;
   }
 
   function buildResolvedLine(resolvedEv, name) {

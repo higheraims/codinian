@@ -37,6 +37,8 @@ from claude_agent_sdk import (
     ClaudeAgentOptions,
     ClaudeSDKClient,
     HookMatcher,
+    PermissionResultAllow,
+    PermissionResultDeny,
     RateLimitEvent,
     ResultMessage,
     SystemMessage,
@@ -92,6 +94,18 @@ MODE_DECIDES_ITSELF = frozenset({"auto", "dontAsk", "plan"})
 # one, so the turn would park on a question nobody is shown (the ISSUE-008
 # hazard). Leaving a plan for review is a decision, not a tool call.
 ALWAYS_ASK = frozenset({"ExitPlanMode"})
+
+# The tool that asks the user a question rather than doing anything (ISSUE-050).
+#
+# The CLI only registers it when the client supplies a `can_use_tool` callback,
+# which is why it was missing from every Codinian session: this app gates on a
+# PreToolUse hook and passed no callback. Measured as a 2x2 -- callback alone
+# yes, hook alone no, both yes, neither no.
+#
+# It is answered rather than approved. The permission callback collects the
+# answer, and a PostToolUse hook swaps it into the tool's output, so the model
+# reads an ordinary successful result instead of a denial.
+QUESTION_TOOL = "AskUserQuestion"
 
 # How long deltas accumulate before one frame goes out (ISSUE-033).
 #
@@ -166,6 +180,9 @@ class SdkSession:
         self._server_info: dict = {}
         # The running look for this conversation's generated title, if any.
         self._name_task: asyncio.Task | None = None
+        # AskUserQuestion answers, keyed by tool_use_id, waiting for the
+        # PostToolUse hook to put them in the tool's output (ISSUE-050).
+        self._answers: dict[str, dict] = {}
 
     # ------------------------------------------------------------- lifecycle
 
@@ -174,7 +191,17 @@ class SdkSession:
         options = ClaudeAgentOptions(
             cwd=self._workdir,
             permission_mode=self._permission_mode,
-            hooks={"PreToolUse": [HookMatcher(hooks=[self._pre_tool_use])]},
+            hooks={
+                "PreToolUse": [HookMatcher(hooks=[self._pre_tool_use])],
+                # Only there to hand AskUserQuestion its answer; see
+                # `_post_tool_use`, which ignores every other tool.
+                "PostToolUse": [HookMatcher(hooks=[self._post_tool_use])],
+            },
+            # Supplying this is what makes AskUserQuestion exist at all
+            # (ISSUE-050). It also picks up the calls the CLI decides to ask
+            # about in the modes where the hook defers, which previously had
+            # nowhere to go.
+            can_use_tool=self._can_use_tool,
             resume=self._resume,
             # System prompt, model, effort and thinking visibility, from the
             # user's settings (ISSUE-032). Read at start rather than held on
@@ -436,6 +463,18 @@ class SdkSession:
         name = input_data.get("tool_name")
         tool_input = input_data.get("tool_input", {})
 
+        # Before the mode is consulted, because a question is not a permission
+        # and no mode should answer it on the user's behalf (ISSUE-050). The
+        # hook sees every call ahead of the permission callback, so this is
+        # where the question is caught.
+        if name == QUESTION_TOOL:
+            await self._ask_question(tuid, tool_input)
+            return {"hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "allow",
+                "permissionDecisionReason": "answered by the user",
+            }}
+
         auto = self._auto_decision(name)
         if auto is not None:
             # Say so in the transcript. A tool call that runs without an
@@ -458,6 +497,22 @@ class SdkSession:
             # itself rather than reading a decision out of this hook.
             return {}
 
+        decision = await self._ask_user(name, tuid, tool_input)
+
+        specific = {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": decision["decision"],
+            "permissionDecisionReason": decision.get("reason") or "",
+        }
+        if decision["decision"] == "allow" and decision.get("updated_input"):
+            specific["updatedInput"] = decision["updated_input"]
+        return {"hookSpecificOutput": specific}
+
+    async def _ask_user(self, name, tuid, tool_input) -> dict:
+        """Put a tool call to the user and wait for the answer.
+
+        Split out of `_pre_tool_use` so the permission callback can reach the
+        same approval card rather than growing a second one (ISSUE-050)."""
         request_id = uuid.uuid4().hex[:12]
         fut: asyncio.Future = self._loop.create_future()
         self._pending[request_id] = fut
@@ -491,15 +546,104 @@ class SdkSession:
             "decided_by": decision.get("decided_by"),
         })
         self._emit_status(SessionStatus.WORKING)
+        return decision
 
-        specific = {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": decision["decision"],
-            "permissionDecisionReason": decision.get("reason") or "",
+    async def _can_use_tool(self, name, tool_input, context):
+        """The CLI's own permission path, which is a different door into this
+        session from the PreToolUse hook.
+
+        The hook runs first and answers most calls, so this is reached in two
+        cases: a question, and a call the CLI decided to ask about in one of
+        the modes where the hook defers. Both belong in front of the user.
+        """
+        tuid = getattr(context, "tool_use_id", None)
+        if name == QUESTION_TOOL:
+            # Already put to the user by the PreToolUse hook, which runs first.
+            return PermissionResultAllow(updated_input=tool_input)
+
+        decision = await self._ask_user(name, tuid, tool_input)
+        if decision["decision"] == "allow":
+            return PermissionResultAllow(
+                updated_input=decision.get("updated_input") or tool_input)
+        return PermissionResultDeny(message=decision.get("reason") or "Denied.")
+
+    async def _ask_question(self, tuid, tool_input) -> None:
+        """Show the model's question, wait for the answer, and stash it for
+        `_post_tool_use` (ISSUE-050).
+
+        The call is always allowed afterwards: a question is not a permission,
+        and refusing it would only make the model guess. Skipping is expressed
+        by answering with no choices, which is what the CLI itself does when a
+        question times out.
+        """
+        request_id = uuid.uuid4().hex[:12]
+        fut: asyncio.Future = self._loop.create_future()
+        self._pending[request_id] = fut
+        questions = tool_input.get("questions") or []
+        self._pending_meta[request_id] = {
+            "request_id": request_id,
+            "tool_use_id": tuid,
+            "name": QUESTION_TOOL,
+            "input": tool_input,
         }
-        if decision["decision"] == "allow" and decision.get("updated_input"):
-            specific["updatedInput"] = decision["updated_input"]
-        return {"hookSpecificOutput": specific}
+
+        self._emit("question_request", {
+            "request_id": request_id,
+            "tool_use_id": tuid,
+            "questions": questions,
+        })
+        self._emit_status(SessionStatus.AWAITING_APPROVAL)
+
+        answer = await fut
+        answers = answer.get("answers") or {}
+        response = answer.get("response") or None
+
+        self._emit("question_resolved", {
+            "request_id": request_id,
+            "tool_use_id": tuid,
+            "answers": answers,
+            "response": response,
+            "answered_by": answer.get("decided_by"),
+        })
+        self._emit_status(SessionStatus.WORKING)
+
+        # Shaped as AskUserQuestionOutput, which is what the CLI validates the
+        # replacement against; a mismatch is dropped and the original kept.
+        payload = {"questions": questions, "answers": answers}
+        if response:
+            payload["response"] = response
+        if tuid:
+            self._answers[tuid] = payload
+
+    async def _post_tool_use(self, input_data, tool_use_id, context):
+        """Put the user's answer in the question tool's output.
+
+        Without this the tool returns "the user did not answer", because the
+        CLI has no dialog of its own to show. Every other tool passes straight
+        through."""
+        if input_data.get("tool_name") != QUESTION_TOOL:
+            return {}
+        tuid = input_data.get("tool_use_id") or tool_use_id
+        payload = self._answers.pop(tuid, None)
+        if payload is None:
+            return {}
+        return {"hookSpecificOutput": {
+            "hookEventName": "PostToolUse",
+            "updatedToolOutput": payload,
+        }}
+
+    def answer_question(self, request_id: str, answers: dict,
+                        response: str | None = None,
+                        answered_by=None) -> bool:
+        """Answer a pending question. Mirrors `resolve`, and shares its pending
+        table, so a stale or already-answered request_id returns False."""
+        fut = self._pending.pop(request_id, None)
+        self._pending_meta.pop(request_id, None)
+        if fut is None or fut.done():
+            return False
+        fut.set_result({"answers": answers or {}, "response": response,
+                        "decided_by": answered_by})
+        return True
 
     def resolve(self, request_id: str, decision: str,
                 updated_input=None, reason=None, decided_by=None) -> bool:
@@ -819,6 +963,13 @@ class SdkRuntime:
         if session is None:
             return False
         return session.resolve(request_id, decision, updated_input, reason, decided_by)
+
+    def answer_question(self, session_id: str, request_id: str, answers: dict,
+                        response: str | None = None, answered_by=None) -> bool:
+        session = self._sessions.get(session_id)
+        if session is None:
+            return False
+        return session.answer_question(request_id, answers, response, answered_by)
 
     async def close(self, session_id: str) -> bool:
         """Disconnect one session and forget it. False when it is not one of

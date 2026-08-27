@@ -126,7 +126,8 @@ class ClientHub:
         # a distinct message so a client watching this session updates its
         # transcript from `event` and its inbox from this, without either
         # having to guess which one an `event` was meant for.
-        if event.get("type") in ("approval_request", "approval_resolved"):
+        if event.get("type") in ("approval_request", "approval_resolved",
+                                 "question_request", "question_resolved"):
             inbox_message = {"t": "inbox_event", "event": event,
                              "session": self._manager.meta(session_id)}
             for ws in list(self._inbox):
@@ -554,6 +555,20 @@ async def _handle_client_message(ws, data, manager, runtime, hub,
             data.get("updated_input"),
             data.get("reason"),
             decided_by=(identity or {}).get("login"),
+        )
+        if not ok:
+            await ws.send_json({"t": "error", "error": "stale_or_unknown_request",
+                                "request_id": data.get("request_id")})
+    elif t == "answer":
+        # An AskUserQuestion answer (ISSUE-050). Separate from `resolve`
+        # because it carries choices rather than a decision; sharing the verb
+        # would mean one message whose shape depends on what it is answering.
+        ok = runtime.answer_question(
+            data.get("session_id"),
+            data.get("request_id"),
+            data.get("answers") or {},
+            data.get("response"),
+            answered_by=(identity or {}).get("login"),
         )
         if not ok:
             await ws.send_json({"t": "error", "error": "stale_or_unknown_request",

@@ -1178,6 +1178,76 @@ button { cursor: pointer; }
 .approval-actions button:hover { filter: brightness(1.05); }
 .approval-actions button:disabled { opacity: .5; cursor: default; }
 
+/* A question from the model (ISSUE-050). Blue rather than the approval card's
+   amber: amber is this app's colour for "something is waiting on your consent",
+   and a question is waiting on your knowledge. Same geometry, so the two read
+   as siblings rather than as unrelated widgets. */
+.question-card {
+  width: 100%;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+  align-self: stretch;
+}
+.question-card-head {
+  padding: .6rem .8rem .3rem;
+  font-weight: 600;
+  font-size: .88rem;
+  color: var(--accent);
+}
+.question-card-body { padding: 0 .8rem .8rem; }
+.question-block { margin-bottom: .8rem; }
+.question-text {
+  font-size: .88rem;
+  margin-bottom: .45rem;
+  display: flex;
+  align-items: baseline;
+  gap: .45rem;
+  flex-wrap: wrap;
+}
+.question-header-chip {
+  font-size: .68rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  padding: .05rem .45rem;
+  flex-shrink: 0;
+}
+.question-options { display: flex; flex-direction: column; gap: .35rem; }
+.question-option {
+  display: flex;
+  flex-direction: column;
+  gap: .15rem;
+  text-align: left;
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: .45rem .6rem;
+  color: var(--text);
+}
+.question-option:hover { border-color: var(--accent); }
+.question-option.is-chosen {
+  border-color: var(--accent);
+  background: var(--bubble-user);
+  color: var(--bubble-user-fg);
+}
+.question-option-label { font-weight: 600; font-size: .85rem; }
+.question-option-desc { font-size: .78rem; color: var(--text-muted); }
+.question-option.is-chosen .question-option-desc { color: inherit; opacity: .85; }
+.question-freeform {
+  margin-top: .5rem;
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: .4rem .6rem;
+  font-size: .82rem;
+}
+
 .approval-reason {
   margin-top: .5rem;
   width: 100%;
