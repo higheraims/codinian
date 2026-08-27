@@ -276,7 +276,8 @@
 
     // git tab
     gitChecked: new Set(),  // paths checked for commit
-    commitMessage: '',
+    commitMessage: '',   // subject line
+    commitBody: '',      // the longer explanation under it
     gitBusy: false,
     gitError: null,         // verbatim stderr from a failed git call
     gitignore: null,        // {content, exists}
@@ -1510,10 +1511,42 @@
       changesSection.appendChild(list);
     }
 
-    const msgTextarea = h('textarea', { class: 'commit-message-input', placeholder: 'Commit message' });
-    msgTextarea.value = state.commitMessage;
-    msgTextarea.addEventListener('input', () => { state.commitMessage = msgTextarea.value; });
-    changesSection.appendChild(msgTextarea);
+    // Two fields, because a commit message is two things: a subject line that
+    // `git log --oneline`, `git shortlog` and every forge show on its own, and
+    // a body underneath for the reasoning that does not fit there. One textarea
+    // pushed people into writing the whole thing as a title (ISSUE-046).
+    const subjectRow = h('div', { class: 'commit-subject-row' });
+    const subjectInput = h('input', {
+      class: 'commit-subject-input', type: 'text', placeholder: 'Summary (one line)',
+    });
+    subjectInput.value = state.commitMessage;
+    const subjectCount = h('span', { class: 'commit-subject-count' });
+
+    // Silent until the subject is long enough to be worth watching: 50
+    // characters is what a forge's commit list shows before it truncates, 72 is
+    // where git's own documentation stops. Neither is enforced; a count that
+    // turns amber says more than a maxlength that swallows keystrokes.
+    function updateSubjectCount() {
+      const n = subjectInput.value.length;
+      subjectCount.textContent = n > 50 ? String(n) : '';
+      subjectCount.classList.toggle('is-long', n > 72);
+    }
+    subjectInput.addEventListener('input', () => {
+      state.commitMessage = subjectInput.value;
+      updateSubjectCount();
+    });
+    updateSubjectCount();
+    subjectRow.appendChild(subjectInput);
+    subjectRow.appendChild(subjectCount);
+    changesSection.appendChild(subjectRow);
+
+    const bodyTextarea = h('textarea', {
+      class: 'commit-body-input',
+      placeholder: 'Description (optional): what changed, and why',
+    });
+    bodyTextarea.value = state.commitBody;
+    bodyTextarea.addEventListener('input', () => { state.commitBody = bodyTextarea.value; });
+    changesSection.appendChild(bodyTextarea);
 
     const commitRow = h('div', { class: 'commit-row' });
     const commitBtn = h('button', { class: 'git-action-btn', type: 'button' }, 'Commit');
@@ -1597,7 +1630,7 @@
 
   async function doCommit(panel) {
     if (!state.commitMessage.trim()) {
-      state.gitError = 'A commit message is required.';
+      state.gitError = 'A commit summary is required.';
       renderGitPanel(panel);
       return;
     }
@@ -1611,9 +1644,11 @@
     const paths = state.gitChecked.size > 0 ? Array.from(state.gitChecked) : null;
     try {
       await api(apiUrl(state.project.id, '/git/commit'), {
-        method: 'POST', jsonBody: { message: state.commitMessage, paths },
+        method: 'POST',
+        jsonBody: { message: state.commitMessage, body: state.commitBody, paths },
       });
       state.commitMessage = '';
+      state.commitBody = '';
       state.gitBusy = false;
       renderGitTab();
     } catch (e) {

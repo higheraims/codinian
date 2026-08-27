@@ -295,8 +295,14 @@ def add_routes(app: web.Application, manager, config: dict, runtime=None) -> Non
         paths = body.get("paths")
         if paths is not None and not isinstance(paths, list):
             return _err(ERR_INVALID, 422, "paths must be a list or null")
+        # `message` is the subject line; `body` is the optional long form under
+        # it. An older client sends only `message`, which still commits.
+        message_body = body.get("body")
+        if message_body is not None and not isinstance(message_body, str):
+            return _err(ERR_INVALID, 422, "body must be a string or null")
         try:
-            return web.json_response(vcs.commit(root, body.get("message", ""), paths))
+            return web.json_response(
+                vcs.commit(root, body.get("message", ""), paths, message_body))
         except ValueError as exc:
             return _err(ERR_INVALID, 422, str(exc))
         except vcs.GitError as exc:

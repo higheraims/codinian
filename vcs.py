@@ -199,8 +199,18 @@ def init(root: Path) -> dict:
     return info(root)
 
 
-def commit(root: Path, message: str, paths: list[str] | None) -> dict:
+def commit(root: Path, message: str, paths: list[str] | None, body: str | None = None) -> dict:
     """Commit and return `{"hash", "subject"}`.
+
+    `message` is the subject line and `body` the longer explanation under it.
+    They are passed as two separate `-m` arguments, which is how git itself
+    joins a subject and a body: one blank line between them, no assembling
+    that separator here. A body that is empty or only whitespace is left off
+    entirely rather than producing a commit whose message ends in blank lines.
+
+    Note that `-m` implies `--cleanup=whitespace`, not `strip`, so a body line
+    starting with `#` survives into the message instead of being read as an
+    editor comment and dropped.
 
     With `paths`, those exact paths are staged (`git add --`, so an
     untracked file is picked up too) and then committed with `--only`,
@@ -220,15 +230,19 @@ def commit(root: Path, message: str, paths: list[str] | None) -> dict:
     if not message or not message.strip():
         raise ValueError("commit message must not be empty")
 
+    message_args = ["-m", message]
+    if body and body.strip():
+        message_args += ["-m", body]
+
     if paths is not None:
         if not paths:
             raise ValueError("paths must be a non-empty list, or None")
         add_result = _git(root, "add", "--", *paths)
         if add_result.returncode != 0:
             raise GitError("git add failed", returncode=add_result.returncode, stderr=add_result.stderr)
-        args = ["commit", "--only", "-m", message, "--", *paths]
+        args = ["commit", "--only", *message_args, "--", *paths]
     else:
-        args = ["commit", "-a", "-m", message]
+        args = ["commit", "-a", *message_args]
 
     result = _git(root, *args)
     if result.returncode != 0:

@@ -159,12 +159,17 @@ registered; the client shows such a project greyed out rather than dropping it.
   are the two raw status characters. `user` is null when the repo has no commit
   identity configured, which is what the client checks before offering Commit.
 - `POST /api/projects/{id}/git/init` → GitInfo. `409 exists` if already a repo.
-- `POST /api/projects/{id}/git/commit` `{"message", "paths": [rel, ...]|null}` →
-  `{"hash", "subject"}`. With `paths`, stage exactly those and commit only them;
-  with `paths: null`, commit all tracked modifications (`git commit -a`).
-  Untracked files must be listed explicitly in `paths` to be included.
-  `422 invalid` for an empty message, `422 git_failed` with git's stderr in
-  `detail` for anything git refuses, including an empty commit.
+- `POST /api/projects/{id}/git/commit`
+  `{"message", "body": string|null, "paths": [rel, ...]|null}` →
+  `{"hash", "subject"}`. `message` is the subject line and `body` the longer
+  explanation; they go to git as two `-m` arguments, so git puts the blank line
+  between them. A body that is empty or only whitespace is omitted, and a
+  request without the field at all still commits. With `paths`, stage exactly
+  those and commit only them; with `paths: null`, commit all tracked
+  modifications (`git commit -a`). Untracked files must be listed explicitly in
+  `paths` to be included. `422 invalid` for an empty message, `422 git_failed`
+  with git's stderr in `detail` for anything git refuses, including an empty
+  commit.
 - `POST /api/projects/{id}/git/tag` `{"name", "message": string|null}` →
   `{"tags": [...]}`. Annotated when a message is given, lightweight otherwise.
 - `GET /api/projects/{id}/gitignore` → `{"content": string, "exists": bool}`

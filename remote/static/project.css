@@ -547,15 +547,32 @@
 .change-row.is-untracked .change-path { color: var(--green); }
 .select-all-row { display: flex; align-items: center; gap: .5rem; font-size: .82rem; color: var(--text-muted); margin-bottom: .4rem; }
 
-.commit-message-input {
+.commit-subject-row { position: relative; margin-bottom: .4rem; }
+.commit-subject-input, .commit-body-input {
   width: 100%;
-  min-height: 4.5rem;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: .5rem .6rem;
   font-size: .86rem;
   color: var(--text);
+}
+/* The count sits inside the field, so the subject and the description keep the
+   same width instead of the counter stealing a column from one of them. */
+.commit-subject-input { font-weight: 600; padding-right: 3rem; }
+.commit-subject-count {
+  position: absolute;
+  right: .6rem;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  font-size: .74rem;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.commit-subject-count.is-long { color: var(--amber); }
+.commit-body-input {
+  min-height: 5rem;
   resize: vertical;
   margin-bottom: .5rem;
 }
