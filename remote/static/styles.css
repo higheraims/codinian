@@ -1748,18 +1748,34 @@ button { cursor: pointer; }
    wide, half the width of a 412px screen. Capped, and its visible label
    dropped, since the value already says what it is. */
 @media (max-width: 820px), (max-height: 560px) {
-  /* One wrapping row of pairs, not three boxes that each wrap privately.
+  /* Two columns: the figures wrap freely on the left, the mode control keeps
+     the right to itself. Pinned rather than laid out in the flow, because in
+     the flow it is one more item to wrap around, and wherever it landed some
+     figure ended up stacked directly above it. Reserving its width as padding
+     means the figures cannot reach it however they wrap.
+
      `display: contents` drops the totals and plan wrappers out of the layout so
-     every figure becomes a direct child of the footer and they all pack against
-     each other. As three boxes this cost either a collision or a wasted row:
-     the boxes cannot shrink below their widest pair, so at 390px "SESSION
-     within limit" ran under the select, and letting the footer wrap instead
-     pushed the select onto a row of its own. The `[hidden]` rules still win,
-     being the more specific selector, so an empty group still disappears. */
-  .session-footer { padding: .35rem .9rem; gap: .25rem .8rem; flex-wrap: wrap; }
+     every figure becomes a direct child of the footer and they pack against
+     each other rather than each group wrapping privately. As three boxes this
+     cost either a collision or a wasted row: a box cannot shrink below its
+     widest pair, so at 390px "SESSION within limit" ran under the select. The
+     `[hidden]` rules still win, being the more specific selector, so an empty
+     group still disappears. */
+  .session-footer {
+    position: relative;
+    padding: .35rem 8.2rem .35rem .9rem;
+    gap: .25rem .8rem;
+    flex-wrap: wrap;
+  }
   .session-totals, .plan-usage,
   .session-totals-row, .plan-usage-row { display: contents; }
-  .permission-mode-control { margin-left: auto; flex-shrink: 0; }
+  .permission-mode-control {
+    position: absolute;
+    right: .9rem;
+    top: 50%;
+    transform: translateY(-50%);
+    margin-left: 0;
+  }
   .session-totals-row, .plan-usage-row { gap: .3rem .8rem; }
   .total-stat, .plan-window {
     flex-direction: row;
@@ -1783,7 +1799,7 @@ button { cursor: pointer; }
   .permission-mode-control { gap: .3rem; }
   .permission-mode-control label { display: none; }
   #permission-mode-select {
-    max-width: 7.5rem;
+    max-width: 6.5rem;
     text-overflow: ellipsis;
     padding-right: 1.4rem;
   }

@@ -1412,7 +1412,7 @@
       if (s.kind === 'sdk' && (typeof s.cost_usd === 'number' || totalTokens > 0)) {
         const bits = [];
         if (typeof s.cost_usd === 'number') bits.push(formatCost(s.cost_usd));
-        if (totalTokens > 0) bits.push(`${formatTokenCompact(totalTokens)} tok`);
+        if (totalTokens > 0) bits.push(`${formatTokenCount(totalTokens)} tok`);
         if (s.totals_cover_this_run_only) bits.push('this run only');
         row.appendChild(h('div', { class: 'session-totals-compact' }, bits.join(' · ')));
       }
@@ -1542,33 +1542,29 @@
     return `$${usd.toFixed(4)}`;
   }
 
-  // Footer counts, rounded to what anyone actually reads off them. A running
+  // Token counts, rounded to what anyone actually reads off them. A running
   // total is a sense of scale, not an audit: nobody acts on the difference
-  // between 204,317 and 204,000, and the digits were costing the footer a row
-  // it then made the mode selector share.
+  // between 204,317 and 204,000, and the digits were costing the footer width
+  // the mode selector then had to share.
   //
   // Under a thousand, the number itself. From there to ten thousand, the
   // nearest 500, because that range is where the second digit still says
-  // something. Above it, the nearest thousand. The exact figure is on the
-  // element's title for anyone who wants it.
+  // something. Then the nearest thousand, and past a million the nearest
+  // hundred thousand. Each step is entered by promotion rather than by a
+  // threshold of its own, so the seams are continuous: 9,750 and 10,000 both
+  // read 10k, and 999,500 reads 1M rather than 1000k.
+  //
+  // Used by the footer and the sidebar alike. The exact figure is on the
+  // footer value's title for anyone who wants it.
   function formatTokenCount(n) {
     const v = n || 0;
     if (v < 1000) return String(v);
-    if (v < 10000) {
-      const k = Math.round(v / 500) * 500 / 1000;
-      // 2k, not 2.0k; 1.5k keeps its half.
-      return `${Number.isInteger(k) ? k : k.toFixed(1)}k`;
-    }
-    return `${Math.round(v / 1000)}k`;
-  }
-
-  // Compact form for the sidebar, where every row is fighting for width:
-  // "12.4k" rather than "12,431".
-  function formatTokenCompact(n) {
-    const v = n || 0;
-    if (v >= 1000000) return `${(v / 1000000).toFixed(1)}M`;
-    if (v >= 1000) return `${(v / 1000).toFixed(1)}k`;
-    return String(v);
+    // 2k, not 2.0k; 1.5k keeps its half. Same for M below.
+    const unit = (x, u) => `${Number.isInteger(x) ? x : x.toFixed(1)}${u}`;
+    if (v < 10000) return unit(Math.round(v / 500) * 500 / 1000, 'k');
+    const k = Math.round(v / 1000);
+    if (k < 1000) return `${k}k`;
+    return unit(Math.round(v / 100000) / 10, 'M');
   }
 
   function sessionTotalTokens(tokens) {
