@@ -127,6 +127,7 @@ class ClientHub:
         # transcript from `event` and its inbox from this, without either
         # having to guess which one an `event` was meant for.
         if event.get("type") in ("approval_request", "approval_resolved",
+                                 "approval_expired",
                                  "question_request", "question_resolved"):
             inbox_message = {"t": "inbox_event", "event": event,
                              "session": self._manager.meta(session_id)}

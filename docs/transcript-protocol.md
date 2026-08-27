@@ -122,6 +122,18 @@ up to N ignores anything `<= N`. Backlog replay (below) uses it too.
   multi-select. Empty `answers` with a null `response` means the user skipped,
   which is what the CLI itself does when a question times out.
 
+- **`approval_expired`** `{ request_id: string, tool_use_id: string, name: string }`
+  The request named by `request_id` can no longer be answered, and nobody
+  answered it (ISSUE-052). Covers both an `approval_request` and a
+  `question_request`; the `request_id` says which card it belongs to and `name`
+  is the tool, `AskUserQuestion` for a question. Sent when the CLI abandons the
+  callback the session was waiting in: after `HOOK_TIMEOUT_SECONDS` for an
+  approval, and immediately for anything pending when the turn is interrupted,
+  which is the everyday case. The renderer marks the card expired rather than
+  removing it: the user may be part-way through answering, and their selections
+  are worth more on screen than a tidy transcript. A `status` event follows,
+  because the turn continues; the model is handed an error for that tool call.
+
 - **`usage`** `{ is_error: boolean, total_cost_usd: number|null, tokens: object|null, result_text: string|null }`
   End of a turn. Maps from the SDK `ResultMessage`. Feeds the cost/token footer
   (ISSUE-011).
@@ -212,7 +224,8 @@ Messages are JSON, one per frame.
   every session, including approvals raised before this client connected.
 
 - `{ "t": "inbox_event", "event": TranscriptEvent, "session": SessionMeta }`
-  An `approval_request`, `approval_resolved`, `question_request` or
+  An `approval_request`, `approval_resolved`, `approval_expired`,
+  `question_request` or
   `question_resolved` from any session, sent to inbox subscribers whatever they
   have open (ISSUE-010). A question shows as a row that opens the session; the
   picker itself stays in the transcript. A client subscribed to that
@@ -222,7 +235,9 @@ Messages are JSON, one per frame.
 
 - `{ "t": "error", "error": code, ... }`
   A reply to something the client asked for. Codes: `stale_or_unknown_request`
-  (a `resolve` naming an approval that is no longer pending), `session_start_failed`
+  (a `resolve` naming an approval that is no longer pending, which now means
+  another client answered it first: a request that died unanswered says so with
+  `approval_expired` instead of waiting to refuse the answer), `session_start_failed`
   (a `create` that could not start, with `detail`), `unknown_permission_mode`,
   `unknown_session`, and `request_failed` for anything else. None of these close
   the socket.

@@ -543,9 +543,20 @@
     }
 
     const card = msg.request_id ? renderState.approvalCards.get(msg.request_id) : null;
-    if (card && card.rejected) {
-      card.rejected(text);
-      return;
+    if (card) {
+      // A stale request is gone for good, so the card is retired rather than
+      // handed back for a second refusal. Every other error is worth another
+      // try (ISSUE-052).
+      if (msg.error === 'stale_or_unknown_request' && card.expired) {
+        renderState.pendingApprovals.delete(msg.request_id);
+        card.expired(text);
+        updateApprovalJump();
+        return;
+      }
+      if (card.rejected) {
+        card.rejected(text);
+        return;
+      }
     }
     const row = msg.request_id ? inboxRowControls.get(msg.request_id) : null;
     if (row && row.rejected) {
@@ -859,7 +870,11 @@
         isQuestion: true,
         session,
       });
-    } else if (ev.type === 'approval_resolved' || ev.type === 'question_resolved') {
+    } else if (ev.type === 'approval_resolved' || ev.type === 'question_resolved'
+               || ev.type === 'approval_expired') {
+      // An expired request leaves the inbox for the same reason an answered one
+      // does: the row's only job is to lead somewhere worth going, and this one
+      // no longer does (ISSUE-052).
       state.inbox.delete(ev.request_id);
     } else {
       return;
@@ -2596,6 +2611,20 @@
         break;
       }
 
+      case 'approval_expired': {
+        // The card is marked in place rather than replaced by a line, which is
+        // what a resolution does. Nobody decided anything here, and a user
+        // part-way through answering should still be able to see what they
+        // had chosen (ISSUE-052).
+        breakBubble();
+        renderState.pendingApprovals.delete(ev.request_id);
+        const dead = renderState.approvalCards.get(ev.request_id);
+        if (dead && dead.expired) dead.expired(expiredText(ev));
+        else transcriptEl.appendChild(buildExpiredLine(ev));
+        updateApprovalJump();
+        break;
+      }
+
       case 'usage': {
         breakBubble(target);
         at.appendChild(buildUsageLine(ev));
@@ -2971,6 +3000,16 @@
         sendError.textContent = message;
         sendError.style.display = 'block';
       },
+      expired(message) {
+        // Unlike `rejected`, this one is final: there is nothing left to
+        // approve, so handing the buttons back would only invite a second
+        // refusal (ISSUE-052).
+        settled = true;
+        setButtonsDisabled(true);
+        el.classList.add('is-expired');
+        sendError.textContent = message;
+        sendError.style.display = 'block';
+      },
     };
   }
 
@@ -2988,6 +3027,7 @@
 
     const body = h('div', { class: 'question-card-body' });
     const picked = new Map();   // question text -> Set of chosen labels
+    const optionButtons = [];
 
     for (const q of questions) {
       const qtext = q.question || '';
@@ -3023,6 +3063,7 @@
           updateSubmit();
         });
         opts.appendChild(btn);
+        optionButtons.push(btn);
       }
       block.appendChild(opts);
       body.appendChild(block);
@@ -3047,6 +3088,21 @@
       return false;
     }
     function updateSubmit() { btnSend.disabled = settled || !anyChosen(); }
+
+    // What the user chose, written out as prose. Only needed when the picker
+    // dies under them (ISSUE-052): the choices are still on screen and still
+    // the answer, so this is what gets handed back rather than retyped. Each
+    // answer keeps its question above it, because four bare labels do not say
+    // which was which.
+    function composedAnswer() {
+      const lines = [];
+      for (const [qtext, chosen] of picked) {
+        if (chosen.size) lines.push(`${qtext}\n${[...chosen].join(', ')}`);
+      }
+      const free = freeform.value.trim();
+      if (free) lines.push(free);
+      return lines.join('\n\n');
+    }
 
     let settled = false;
     function answer(skip) {
@@ -3091,6 +3147,35 @@
         sendError.textContent = message;
         sendError.style.display = 'block';
       },
+      expired(message) {
+        // Final, where `rejected` hands the card back: nothing is listening
+        // for this answer any more, so the card stops pretending otherwise
+        // (ISSUE-052). The questions and the selections stay on screen. They
+        // are what the user spent the effort on, and they are about to be
+        // worth something again.
+        settled = true;
+        btnSend.disabled = true;
+        btnSkip.disabled = true;
+        freeform.disabled = true;
+        for (const btn of optionButtons) btn.disabled = true;
+        el.classList.add('is-expired');
+        sendError.textContent = message;
+        sendError.style.display = 'block';
+        if (!anyChosen()) return;
+
+        // Into the composer rather than straight down the socket: the turn is
+        // still running, and a message the user has not seen leaving is a poor
+        // way to find out what was sent on their behalf.
+        const recover = h('button', { class: 'btn-edit', type: 'button' },
+                          'Put my answers in the composer');
+        recover.addEventListener('click', () => {
+          composerInput.value = composedAnswer();
+          growComposer();
+          composerInput.focus();
+          recover.disabled = true;
+        });
+        actions.appendChild(recover);
+      },
     };
   }
 
@@ -3112,6 +3197,26 @@
     if (resolvedEv.answered_by) {
       el.appendChild(h('span', { class: 'decided-by' }, `by ${resolvedEv.answered_by}`));
     }
+    return el;
+  }
+
+  // Says what expiring cost, which is different for the two kinds of card: a
+  // question that nobody answered leaves Claude guessing, while an approval
+  // that nobody gave means the tool never ran (ISSUE-052). Neither line says
+  // why it expired, because the two reasons (the wait ran out, or the turn was
+  // interrupted) produce the same dead card and the second one the user did
+  // themselves.
+  function expiredText(ev) {
+    return ev.name === 'AskUserQuestion'
+      ? 'Expired. Claude did not get an answer to this one.'
+      : 'Expired. The tool call did not run.';
+  }
+
+  function buildExpiredLine(ev) {
+    const el = h('div', { class: 'approval-resolved-line' });
+    el.appendChild(h('span', {}, ev.name ? `${ev.name}: ` : 'Approval: '));
+    el.appendChild(h('span', { class: 'decision-deny' }, 'expired'));
+    el.appendChild(h('span', {}, 'nobody answered it'));
     return el;
   }
 

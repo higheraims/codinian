@@ -57,6 +57,7 @@ class TranscriptEvent:
 # specific fields for each are documented in docs/transcript-protocol.md.
 EVENT_TYPES = frozenset({
     "system", "text", "thinking", "tool_use", "tool_result",
-    "approval_request", "approval_resolved", "permission_note",
+    "approval_request", "approval_resolved", "approval_expired",
+    "question_request", "question_resolved", "permission_note",
     "usage", "rate_limit", "plan_usage", "status",
 })

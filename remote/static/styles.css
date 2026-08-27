@@ -1238,6 +1238,25 @@ button { cursor: pointer; }
 .question-option-label { font-weight: 600; font-size: .85rem; }
 .question-option-desc { font-size: .78rem; color: var(--text-muted); }
 .question-option.is-chosen .question-option-desc { color: inherit; opacity: .85; }
+
+/* A card whose request died before anyone answered it (ISSUE-052). Drained of
+   its colour rather than taken away: the question and the selections under it
+   are the work the user already did, and hiding them is what would make the
+   retype necessary. The border is what carries "this is over" here, since a
+   card that still looked live is the bug being fixed. */
+.approval-card.is-expired,
+.question-card.is-expired {
+  border-color: var(--border);
+  border-style: dashed;
+  background: var(--surface);
+}
+.approval-card.is-expired .approval-card-head,
+.question-card.is-expired .question-card-head { color: var(--text-muted); }
+.question-card.is-expired .question-option:hover { border-color: var(--border); }
+.question-card.is-expired .question-option:disabled,
+.question-card.is-expired .question-freeform:disabled { opacity: .75; cursor: default; }
+.question-card.is-expired .question-option.is-chosen:disabled { opacity: 1; }
+
 .question-freeform {
   margin-top: .5rem;
   width: 100%;

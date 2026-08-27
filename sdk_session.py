@@ -22,6 +22,11 @@ hook therefore reads the session's current mode before it decides: see
 Known hazard (ISSUE-008): the hook blocks the turn until it is answered. With
 no client attached, or after the app restarts, an unanswered approval leaves
 the session parked. M1 documents this; ISSUE-008 handles staleness.
+
+The wait is not unbounded, and what happens at the end of it is the subject of
+ISSUE-052: the CLI abandons a hook after HOOK_TIMEOUT_SECONDS and cancels the
+callback, which `_wait_for_answer` turns into an `approval_expired` event so no
+client is left showing a card that can no longer be answered.
 """
 
 from __future__ import annotations
@@ -120,6 +125,22 @@ DELTA_FLUSH_SECONDS = 0.1
 # in that mode, which is the difference between it and `bypassPermissions`.
 EDIT_TOOLS = frozenset({"Edit", "MultiEdit", "Write", "NotebookEdit"})
 
+# How long a PreToolUse hook may take before the CLI abandons it (ISSUE-052).
+#
+# The CLI's own default is 600 seconds, measured exactly: a hook that slept for
+# 600 was cancelled 600.0 seconds after it was entered, and the model was told
+# "PreToolUse hook did not respond before its timeout (host client may be
+# unreachable)". Every approval waits inside that hook, so the default put a
+# ten-minute ceiling on how long a person had to answer one. The field is in
+# seconds and replaces the default rather than capping it.
+#
+# A day, because the shortest honest answer to "how long may an approval sit"
+# is "until the user gets back", and an approval raised at the end of an evening
+# is a normal case rather than an error. It is not unbounded: a session parked
+# on an approval nobody will ever answer should eventually stop holding the
+# turn, and this is the value at which that happens.
+HOOK_TIMEOUT_SECONDS = 24 * 60 * 60
+
 
 def _model_usage_totals(model_usage) -> dict | None:
     """Cumulative token totals for a session, summed across every model it used.
@@ -192,7 +213,11 @@ class SdkSession:
             cwd=self._workdir,
             permission_mode=self._permission_mode,
             hooks={
-                "PreToolUse": [HookMatcher(hooks=[self._pre_tool_use])],
+                # The timeout is the whole reason this matcher is spelled out:
+                # approvals wait inside the hook, and the CLI's default gave
+                # them ten minutes (ISSUE-052).
+                "PreToolUse": [HookMatcher(hooks=[self._pre_tool_use],
+                                           timeout=HOOK_TIMEOUT_SECONDS)],
                 # Only there to hand AskUserQuestion its answer; see
                 # `_post_tool_use`, which ignores every other tool.
                 "PostToolUse": [HookMatcher(hooks=[self._post_tool_use])],
@@ -437,6 +462,45 @@ class SdkSession:
 
     # ------------------------------------------------------------- approvals
 
+    async def _wait_for_answer(self, request_id: str, fut: asyncio.Future,
+                               tuid, name: str):
+        """Wait for a client to answer, and clean up however the wait ends.
+
+        The cancelled case is what this wrapper is for (ISSUE-052). When the CLI
+        gives up on the callback the wait is happening inside, it cancels the
+        task; cancelling a task cancels the future it is waiting on; and the
+        card in front of the user goes on looking answerable. It is not: the
+        answer arrives to find `fut.done()` and comes back as
+        `stale_or_unknown_request`, after the user has read the question and
+        chosen. The expiry event is what lets every client say so first.
+
+        Popping in `finally` rather than in each caller: on the answered path
+        `resolve` and `answer_question` have already popped, and pop-with-
+        default makes the two paths one line instead of two branches."""
+        try:
+            return await fut
+        except asyncio.CancelledError:
+            # A closing session cancels these too, and there is no one left to
+            # tell: the session is on its way out of the manager, and an event
+            # saying its approval expired would arrive after the transcript it
+            # belongs to has gone.
+            if self._closed:
+                raise
+            self._emit("approval_expired", {
+                "request_id": request_id,
+                "tool_use_id": tuid,
+                "name": name,
+            })
+            # The turn is not over: the CLI hands the model an error for this
+            # call and carries on, so the session is working again, not still
+            # waiting on someone. This is also what withdraws the desktop
+            # "needs approval" notification, which keys off the status.
+            self._emit_status(SessionStatus.WORKING)
+            raise
+        finally:
+            self._pending.pop(request_id, None)
+            self._pending_meta.pop(request_id, None)
+
     def _auto_decision(self, name: str) -> str | None:
         """What the current permission mode says about a call to `name`,
         before anyone is asked. Returns "allow" to approve it here, "defer" to
@@ -467,12 +531,17 @@ class SdkSession:
         # and no mode should answer it on the user's behalf (ISSUE-050). The
         # hook sees every call ahead of the permission callback, so this is
         # where the question is caught.
+        #
+        # Allowed immediately and put to the user in `_can_use_tool`, which the
+        # CLI calls next. The question used to be asked here, which spent the
+        # hook's timeout on a person (ISSUE-052); the permission callback has no
+        # such budget, and both see the same tool_use_id, so the answer still
+        # reaches `_post_tool_use` under the key it looks for.
         if name == QUESTION_TOOL:
-            await self._ask_question(tuid, tool_input)
             return {"hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
                 "permissionDecision": "allow",
-                "permissionDecisionReason": "answered by the user",
+                "permissionDecisionReason": "the user answers this one",
             }}
 
         auto = self._auto_decision(name)
@@ -533,7 +602,8 @@ class SdkSession:
         })
         self._emit_status(SessionStatus.AWAITING_APPROVAL)
 
-        decision = await fut  # {"decision", "updated_input", "reason", "decided_by"}
+        # {"decision", "updated_input", "reason", "decided_by"}
+        decision = await self._wait_for_answer(request_id, fut, tuid, name)
 
         self._emit("approval_resolved", {
             "request_id": request_id,
@@ -555,10 +625,15 @@ class SdkSession:
         The hook runs first and answers most calls, so this is reached in two
         cases: a question, and a call the CLI decided to ask about in one of
         the modes where the hook defers. Both belong in front of the user.
+
+        A question waits here rather than in the hook because this callback has
+        no timeout: measured against the bundled CLI, a permission callback that
+        took 700 seconds was still allowed to answer, while a hook is abandoned
+        at 600 (ISSUE-052).
         """
         tuid = getattr(context, "tool_use_id", None)
         if name == QUESTION_TOOL:
-            # Already put to the user by the PreToolUse hook, which runs first.
+            await self._ask_question(tuid, tool_input)
             return PermissionResultAllow(updated_input=tool_input)
 
         decision = await self._ask_user(name, tuid, tool_input)
@@ -569,7 +644,7 @@ class SdkSession:
 
     async def _ask_question(self, tuid, tool_input) -> None:
         """Show the model's question, wait for the answer, and stash it for
-        `_post_tool_use` (ISSUE-050).
+        `_post_tool_use` (ISSUE-050). Called from `_can_use_tool`.
 
         The call is always allowed afterwards: a question is not a permission,
         and refusing it would only make the model guess. Skipping is expressed
@@ -594,7 +669,8 @@ class SdkSession:
         })
         self._emit_status(SessionStatus.AWAITING_APPROVAL)
 
-        answer = await fut
+        answer = await self._wait_for_answer(request_id, fut, tuid,
+                                             QUESTION_TOOL)
         answers = answer.get("answers") or {}
         response = answer.get("response") or None
 
