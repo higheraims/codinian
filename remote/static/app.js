@@ -1916,9 +1916,44 @@
     return transcriptEl.scrollHeight - transcriptEl.scrollTop - transcriptEl.clientHeight < 40;
   }
 
+  // Whether the reader is riding the bottom, which is the state the pane is
+  // written around: new output arrives without them chasing it, and somebody
+  // who has scrolled up to re-read a tool result is left where they are.
+  //
+  // Held as a flag rather than measured when it is needed, because what breaks
+  // the position is a layout change, and by the time one has happened
+  // `isAtBottom` already reads false. A check made after the fact cannot tell
+  // "they scrolled up" from "the box shrank under them" (ISSUE-053).
+  let stickToBottom = true;
+
   function scrollToBottom() {
     transcriptEl.scrollTop = transcriptEl.scrollHeight;
+    stickToBottom = true;
   }
+
+  transcriptEl.addEventListener('scroll', () => {
+    stickToBottom = isAtBottom();
+  }, { passive: true });
+
+  // #transcript is `flex: 1` above the approval bar, the totals footer and the
+  // composer, so anything down there that grows takes its height out of the
+  // scroll viewport while the scroll position stays put. A transcript at the
+  // bottom then loses exactly as many pixels off the end as the other pane
+  // gained, and the tail of the last message sits under the composer until
+  // something gives the height back.
+  //
+  // The composer is the one that bites, because it grows on every keystroke:
+  // measured on an 820x700 pane, typing an eight-line prompt took it from 69px
+  // to 237px and hid 168px of the answer, which came back only when the box was
+  // cleared on send. That is why the missing text looked like it arrived with
+  // the next prompt (ISSUE-053).
+  //
+  // One observer on the box itself, rather than a re-scroll after each of the
+  // four things that currently resize it, so the fifth does not have to
+  // remember.
+  new ResizeObserver(() => {
+    if (stickToBottom) scrollToBottom();
+  }).observe(transcriptEl);
 
   function clearEmptyState() {
     const placeholder = transcriptEl.querySelector(':scope > .empty-state');
@@ -1927,6 +1962,7 @@
 
   function resetTranscript(message) {
     transcriptEl.innerHTML = '';
+    stickToBottom = true;
     renderState = {
       toolCards: new Map(),
       approvalCards: new Map(),
