@@ -213,6 +213,10 @@ class SdkSession:
         # AskUserQuestion answers, keyed by tool_use_id, waiting for the
         # PostToolUse hook to put them in the tool's output (ISSUE-050).
         self._answers: dict[str, dict] = {}
+        # The last status emitted, so the reader can tell content arriving
+        # while the session shows idle from ordinary mid-turn traffic
+        # (ISSUE-055).
+        self._status: SessionStatus | None = None
 
     # ------------------------------------------------------------- lifecycle
 
@@ -347,6 +351,10 @@ class SdkSession:
         """
         try:
             async for msg in self._client.receive_messages():
+                # Before the content, not after it: a client should see the
+                # session go busy and then see what it is busy with.
+                if isinstance(msg, (AssistantMessage, UserMessage)):
+                    self._resume_if_idle()
                 try:
                     self._handle_message(msg)
                 except Exception as exc:
@@ -367,6 +375,28 @@ class SdkSession:
             # Whatever happened, do not leave `_run` waiting on a turn that no
             # longer has anything to end it.
             self._turn_done.set()
+
+    def _resume_if_idle(self) -> None:
+        """The CLI is producing content while the session says it is idle, so
+        it is not idle (ISSUE-055).
+
+        A turn that leaves a background task running ends on a result, and the
+        CLI picks the work back up when the task reports. Everything after that
+        renders, but the pane went on saying "awaiting input" through all of
+        it, because nothing but a prompt ever set the status back.
+
+        Only an assistant or user message counts. A rate limit event or a task
+        notification can arrive on a genuinely idle session, and a status that
+        went to working on one of those would have nothing to bring it back.
+
+        The send queue is deliberately not held here. `_run` waits on
+        `_turn_done` for the turn it started, and making it also wait on work
+        that resumed by itself would hang every queued prompt if that work never
+        produced a result. A label that lags is worth fixing; a composer that
+        swallows messages is not worth risking to fix it."""
+        if self._closed or self._status != SessionStatus.AWAITING_INPUT:
+            return
+        self._emit_status(SessionStatus.WORKING)
 
     def _end_turn(self) -> None:
         """A `ResultMessage` went past, so the turn is over.
@@ -972,6 +1002,7 @@ class SdkSession:
         self._manager.add_event(self._session_id, etype, data)
 
     def _emit_status(self, status: SessionStatus) -> None:
+        self._status = status
         self._emit("status", {"status": status.value})
 
 
