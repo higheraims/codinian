@@ -185,7 +185,16 @@ class SdkSession:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._client: ClaudeSDKClient | None = None
         self._run_task: asyncio.Task | None = None
+        # The reader, which runs for the session's life rather than for a turn
+        # (ISSUE-054).
+        self._read_task: asyncio.Task | None = None
         self._sends: asyncio.Queue[str | None] = asyncio.Queue()
+        # Set while no turn is in flight. The sender waits on it so a prompt
+        # typed mid-turn queues behind that turn rather than being interleaved
+        # into it, which is what the single merged loop used to guarantee by
+        # construction (ISSUE-054).
+        self._turn_done: asyncio.Event = asyncio.Event()
+        self._turn_done.set()
         self._pending: dict[str, asyncio.Future] = {}
         self._pending_meta: dict[str, dict] = {}
         self._closed = False
@@ -256,6 +265,9 @@ class SdkSession:
         except Exception:
             pass
 
+        # The reader starts first, so nothing the CLI says can arrive before
+        # somebody is listening for it.
+        self._read_task = asyncio.create_task(self._read())
         self._run_task = asyncio.create_task(self._run())
         if initial_prompt:
             self.send(initial_prompt)
@@ -276,6 +288,8 @@ class SdkSession:
             self._delta_task.cancel()
         if self._run_task:
             self._run_task.cancel()
+        if self._read_task:
+            self._read_task.cancel()
         if self._client:
             try:
                 await self._client.disconnect()
@@ -285,41 +299,88 @@ class SdkSession:
     # -------------------------------------------------------- turn processing
 
     async def _run(self) -> None:
-        """The one task that drives every turn. It is created once in `start()`
-        and never recreated, so whatever ends it ends the session.
+        """Feeds the CLI one prompt at a time. Reading what comes back is
+        `_read`'s job, running alongside this one.
 
-        That makes the two kinds of failure worth separating. A raise out of
-        `_handle_message` is a bug in our own mapping of one block, and killing
-        a working conversation over an unrenderable block is the wrong trade,
-        so those are reported per message and the turn carries on. A raise from
-        the client -- the pipe to the `claude` subprocess going away -- has
-        nothing left to carry on with, so the loop stops and says so, and
-        `send` refuses from then on rather than queueing into the dark
-        (ISSUE-036).
+        The two used to be one loop, which is what made ISSUE-054 possible: a
+        loop that reads only between `query()` and the result leaves a window
+        with nobody listening, and the SDK keeps filling it. They are still
+        coupled, because sending has to stay serialised -- a prompt typed while
+        Claude is working belongs to the next turn, not the middle of this one
+        -- but the coupling is now an event the reader sets, rather than the
+        shape of the loop.
         """
         try:
             while not self._closed:
                 text = await self._sends.get()
                 if text is None:
                     break
+                self._turn_done.clear()
                 self._emit_status(SessionStatus.WORKING)
                 await self._client.query(text)
-                async for msg in self._client.receive_response():
-                    try:
-                        self._handle_message(msg)
-                    except Exception as exc:
-                        self._emit("system", {"subtype": "error", "data": {
-                            "message": f"could not render one message: {exc}"}})
-                self._schedule_name_lookup()
-                if not self._closed:
-                    self._emit_status(SessionStatus.AWAITING_INPUT)
+                await self._turn_done.wait()
+                if self._failed:
+                    break
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # surface, do not swallow
             self._fail(str(exc))
 
+    async def _read(self) -> None:
+        """Everything the CLI says, for as long as the session lives.
+
+        `receive_messages()` rather than `receive_response()`, which the SDK
+        documents as terminating on the first `ResultMessage`. That return is
+        the bug in ISSUE-054: the SDK's own reader task keeps parsing CLI
+        output into a stream whatever we are doing, so anything written after a
+        turn's result was read, queued, and then handed over at the top of the
+        next turn -- arriving under that turn's prompt echo, looking like an
+        instant answer to the wrong question.
+
+        The two kinds of failure are still worth separating. A raise out of
+        `_handle_message` is a bug in our own mapping of one block, and killing
+        a working conversation over an unrenderable block is the wrong trade,
+        so those are reported per message and the session carries on. The pipe
+        to the `claude` subprocess going away has nothing left to carry on
+        with, so this stops and says so, and `send` refuses from then on rather
+        than queueing into the dark (ISSUE-036).
+        """
+        try:
+            async for msg in self._client.receive_messages():
+                try:
+                    self._handle_message(msg)
+                except Exception as exc:
+                    self._emit("system", {"subtype": "error", "data": {
+                        "message": f"could not render one message: {exc}"}})
+                if isinstance(msg, ResultMessage):
+                    self._end_turn()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # surface, do not swallow
+            self._fail(str(exc))
+        else:
+            # The stream ended on its own: the CLI is gone, and a session that
+            # cannot hear it is over whether or not anything raised.
+            if not self._closed:
+                self._fail("the connection to the claude process ended")
+        finally:
+            # Whatever happened, do not leave `_run` waiting on a turn that no
+            # longer has anything to end it.
+            self._turn_done.set()
+
+    def _end_turn(self) -> None:
+        """A `ResultMessage` went past, so the turn is over.
+
+        The status change lives here rather than where the reading stops,
+        because those were the same place before ISSUE-054 and only one of them
+        was right: the turn ends when the CLI says so."""
+        self._schedule_name_lookup()
+        if not self._closed:
+            self._emit_status(SessionStatus.AWAITING_INPUT)
+        self._turn_done.set()
+
     def _fail(self, message: str) -> None:
-        """The turn loop has stopped for good. Say so, refuse further sends,
+        """The session has stopped for good. Say so, refuse further sends,
         and account for anything already queued behind the failure rather than
         leaving it to look delivered (ISSUE-036)."""
         self._failed = True
