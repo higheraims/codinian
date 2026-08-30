@@ -11,6 +11,12 @@ related: [ISSUE-025, ISSUE-033]
 
 ## Summary
 
+**This is a real bug and the fix below is verified, but it is not what the
+report that prompted it describes.** With the fix live in the pane, the reporter
+still saw the original symptom, which turned out to be [[ISSUE-054]]. The report
+is quoted here because it is what led to finding this, not because this explains
+it.
+
 Reported from a session left running for another project:
 
 > Sometimes the tail end of model chat doesn't display until the next prompt is
@@ -29,10 +35,8 @@ exactly as many pixels off the end as the composer gained. Clearing the box on
 send gives the height back and the missing text reappears, which is what makes
 it look like the next prompt is what delivered it.
 
-The rest of the report follows from that. What appears the moment Enter is
-pressed is the *previous* turn's tail, so the new turn reads as not having
-started; retyping grows the composer again and swallows whatever the new turn
-has produced in the meantime, and the second Enter releases all of it at once.
+That reading of the report turned out to be wrong. It fit every detail, and the
+measurements below are real, but see the worklog: the symptom outlived the fix.
 
 ## Acceptance / done-when
 
@@ -77,6 +81,19 @@ one has happened `isAtBottom` already reads false, so an observer that measured
 on the way in could never tell "the reader scrolled up" from "the box shrank
 under them". The flag is set by `scrollToBottom` and refreshed from the
 transcript's own scroll events, so it records what the reader last did.
+
+### The report this did not fix
+
+After the fix shipped and Codinian was restarted, the original symptom was
+unchanged. The pane was running the new code, not a cached copy: the app.js in
+`~/.cache/main.py/WebKitCache` was byte-for-byte identical to the patched file
+and had been fetched that morning.
+
+So the tail going missing had another cause. It is [[ISSUE-054]]: output the
+CLI wrote after a turn's result was held until the next prompt. Ruling this one
+out is what got there, by removing the layout explanation and leaving the
+reporter's next detail -- that the missing text appears *below* the new prompt
+-- with nowhere to hide.
 
 ### What was checked
 
