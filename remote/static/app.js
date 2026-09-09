@@ -1454,11 +1454,12 @@
     }
   }
 
-  // A message sent mid-turn is not dropped: SdkSession queues it and the CLI
-  // queues it again on its own side, so it lands as soon as the turn ends.
-  // Disabling the box while Claude worked meant there was no way to steer a
-  // running turn, which is what ISSUE-028 hit trying to type a /btw. Only a
-  // session that isn't there at all closes the composer now.
+  // A message sent mid-turn is not dropped and does not wait for the turn to
+  // end: it goes to the CLI, whose own queue hands it to the turn already
+  // running, between tool calls. Disabling the box while Claude worked meant
+  // there was no way to steer a running turn, which is what ISSUE-028 hit
+  // trying to type a /btw. Only a session that isn't there at all closes the
+  // composer now.
   function updateComposerState() {
     const meta = state.currentId ? state.sessionsMeta.get(state.currentId) : null;
     // `send` and `interrupt` are looked up among SDK sessions only, so both are
@@ -1487,8 +1488,11 @@
         : !writable
           ? 'This is a terminal session — drive it from the desktop app'
           : busy
-            ? 'Message… (queued until this turn ends)'
+            ? 'Message… (goes to Claude mid-turn)'
             : 'Message, or / for commands and skills…';
+    // Stop and the composer do different jobs now, and the difference is worth
+    // naming: a message reaches Claude without ending the turn, but only
+    // between tool calls, so a command that has hung still needs the button.
     // Only while there is something to stop. An always-present Stop that does
     // nothing most of the time is worse than no Stop (ISSUE-033).
     if (composerStop) composerStop.hidden = !busy || !!historyId;

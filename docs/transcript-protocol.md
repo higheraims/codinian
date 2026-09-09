@@ -396,8 +396,11 @@ inside it (`project-workspace-protocol.md`).
   default: a subagent routinely produces more events than the parent it runs
   under. Key tool cards by `tool_use_id` globally rather than per container, so
   a result pairs with its call wherever either rendered.
-- The composer stays usable while a turn is running. Messages queue, in Codinian
-  and again in the CLI, and land when the turn ends (ISSUE-028).
+- The composer stays usable while a turn is running (ISSUE-028), and a message
+  sent then does not wait for the turn to end: the CLI hands it to the turn
+  already running, between tool calls (ISSUE-056). It cannot reach a turn that
+  is blocked inside a tool call, so Stop is still the control for a command
+  that has hung, and Stop cancels anything queued behind the turn it stops.
 - Theme-aware (light and dark), responsive, no external network dependencies:
   the same bundle loads inside WebKitGTK and in a plain browser.
 - `?theme=light` or `?theme=dark` on the page URL forces a palette; with no such

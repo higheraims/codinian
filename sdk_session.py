@@ -141,6 +141,29 @@ EDIT_TOOLS = frozenset({"Edit", "MultiEdit", "Write", "NotebookEdit"})
 # turn, and this is the value at which that happens.
 HOOK_TIMEOUT_SECONDS = 24 * 60 * 60
 
+# How many sent messages to keep the text of, for naming the ones a stop throws
+# away. Only messages still in the CLI's queue can be thrown, and that queue is
+# what one person can type during one turn, so this is generous rather than
+# tuned.
+SENT_TEXT_REMEMBERED = 64
+
+# How much of a cancelled message to quote back when naming it.
+CANCELLED_QUOTE_CHARS = 60
+
+# States in which the session already has a turn in flight, so a message
+# arriving does not change what it is doing. See `_run`.
+BUSY_STATUSES = frozenset({
+    SessionStatus.WORKING, SessionStatus.AWAITING_APPROVAL,
+})
+
+
+def _one_line(text: str) -> str:
+    """A message squashed to one short line, for quoting back in a note."""
+    flat = " ".join(text.split())
+    if len(flat) > CANCELLED_QUOTE_CHARS:
+        flat = flat[:CANCELLED_QUOTE_CHARS - 1].rstrip() + "…"
+    return f'"{flat}"'
+
 
 def _model_usage_totals(model_usage) -> dict | None:
     """Cumulative token totals for a session, summed across every model it used.
@@ -188,13 +211,15 @@ class SdkSession:
         # The reader, which runs for the session's life rather than for a turn
         # (ISSUE-054).
         self._read_task: asyncio.Task | None = None
-        self._sends: asyncio.Queue[str | None] = asyncio.Queue()
-        # Set while no turn is in flight. The sender waits on it so a prompt
-        # typed mid-turn queues behind that turn rather than being interleaved
-        # into it, which is what the single merged loop used to guarantee by
-        # construction (ISSUE-054).
-        self._turn_done: asyncio.Event = asyncio.Event()
-        self._turn_done.set()
+        # (uuid, text) pairs, or None to stop the loop. The uuid is ours to
+        # choose and is what makes a message cancellable after it has been
+        # sent; see `send` and `interrupt`.
+        self._sends: asyncio.Queue[tuple[str, str] | None] = asyncio.Queue()
+        # What each message we have handed over said, so a cancellation can
+        # name it rather than count it. Bounded, because nothing tells us when
+        # a message has been consumed: the CLI's command_lifecycle events are
+        # internal to it and the SDK does not surface them.
+        self._sent_text: dict[str, str] = {}
         self._pending: dict[str, asyncio.Future] = {}
         self._pending_meta: dict[str, dict] = {}
         self._closed = False
@@ -208,6 +233,10 @@ class SdkSession:
         self._delta_task: asyncio.Task | None = None
         # Filled at connect; see start(). Empty when the CLI did not answer.
         self._server_info: dict = {}
+        # Protocol capabilities the CLI advertises, from the init message
+        # rather than from server_info, which does not carry them. None until
+        # the first turn brings init with it; see `_handle_message`.
+        self._capabilities: list[str] | None = None
         # The running look for this conversation's generated title, if any.
         self._name_task: asyncio.Task | None = None
         # AskUserQuestion answers, keyed by tool_use_id, waiting for the
@@ -303,26 +332,46 @@ class SdkSession:
     # -------------------------------------------------------- turn processing
 
     async def _run(self) -> None:
-        """Feeds the CLI one prompt at a time. Reading what comes back is
-        `_read`'s job, running alongside this one.
+        """Hands the CLI each message as it is written. Reading what comes back
+        is `_read`'s job, running alongside this one.
 
         The two used to be one loop, which is what made ISSUE-054 possible: a
         loop that reads only between `query()` and the result leaves a window
-        with nobody listening, and the SDK keeps filling it. They are still
-        coupled, because sending has to stay serialised -- a prompt typed while
-        Claude is working belongs to the next turn, not the middle of this one
-        -- but the coupling is now an event the reader sets, rather than the
-        shape of the loop.
+        with nobody listening, and the SDK keeps filling it.
+
+        This loop used to wait for the turn to end before handing over the next
+        message, on the reasoning that a prompt typed while Claude is working
+        belongs to the next turn rather than the middle of this one. That was
+        wrong, and it cost the feature the wait was protecting. The CLI keeps a
+        command queue of its own: a message written to it mid-turn is absorbed
+        by the turn already running, at the next step of the agent loop, so the
+        model reads it without the turn having to end first. Measured against a
+        turn working through four sequential 15-second shell commands, a
+        message sent 20 seconds in was read after the first command returned
+        and the remaining three were abandoned. Holding it here meant it
+        arrived after all four instead.
+
+        What the wait did guarantee, and this still does, is that one sender
+        writes to the CLI at a time and in the order the messages were typed.
+
+        The limit worth knowing: absorption happens between tool calls, not
+        during one. A message sent while a command is blocked waits for that
+        command to return. Redirecting Claude away from something genuinely
+        hung is `interrupt`'s job, not this one's.
         """
         try:
             while not self._closed:
-                text = await self._sends.get()
-                if text is None:
+                item = await self._sends.get()
+                if item is None:
                     break
-                self._turn_done.clear()
-                self._emit_status(SessionStatus.WORKING)
-                await self._client.query(text)
-                await self._turn_done.wait()
+                message_uuid, text = item
+                # Only when nothing is in flight. A message sent mid-turn does
+                # not change what the session is doing, and one sent while an
+                # approval is on screen would put the status back to working
+                # and hide a card that still needs an answer.
+                if self._status not in BUSY_STATUSES:
+                    self._emit_status(SessionStatus.WORKING)
+                await self._client.query(self._envelope(message_uuid, text))
                 if self._failed:
                     break
         except asyncio.CancelledError:
@@ -371,10 +420,6 @@ class SdkSession:
             # cannot hear it is over whether or not anything raised.
             if not self._closed:
                 self._fail("the connection to the claude process ended")
-        finally:
-            # Whatever happened, do not leave `_run` waiting on a turn that no
-            # longer has anything to end it.
-            self._turn_done.set()
 
     def _resume_if_idle(self) -> None:
         """The CLI is producing content while the session says it is idle, so
@@ -387,13 +432,7 @@ class SdkSession:
 
         Only an assistant or user message counts. A rate limit event or a task
         notification can arrive on a genuinely idle session, and a status that
-        went to working on one of those would have nothing to bring it back.
-
-        The send queue is deliberately not held here. `_run` waits on
-        `_turn_done` for the turn it started, and making it also wait on work
-        that resumed by itself would hang every queued prompt if that work never
-        produced a result. A label that lags is worth fixing; a composer that
-        swallows messages is not worth risking to fix it."""
+        went to working on one of those would have nothing to bring it back."""
         if self._closed or self._status != SessionStatus.AWAITING_INPUT:
             return
         self._emit_status(SessionStatus.WORKING)
@@ -407,7 +446,6 @@ class SdkSession:
         self._schedule_name_lookup()
         if not self._closed:
             self._emit_status(SessionStatus.AWAITING_INPUT)
-        self._turn_done.set()
 
     def _fail(self, message: str) -> None:
         """The session has stopped for good. Say so, refuse further sends,
@@ -487,25 +525,55 @@ class SdkSession:
         dead session would put the user's words in the transcript looking sent,
         which is the failure ISSUE-036 is about, so the state is read here for
         the caller's answer and again on the loop thread -- where `_failed` is
-        actually written -- before anything is echoed."""
+        actually written -- before anything is echoed.
+
+        A message sent while Claude is working is not held for the next turn.
+        It goes to the CLI as soon as this queue reaches it, and the turn in
+        flight picks it up between tool calls; see `_run`."""
         if not self.accepts_input():
             self._refuse_send()
             return False
+
+        message_uuid = str(uuid.uuid4())
 
         def _queue() -> None:
             if not self.accepts_input():
                 self._refuse_send()
                 return
             self._emit("text", {"role": "user", "text": text, "source": "operator"})
-            self._sends.put_nowait(text)
+            self._remember_sent(message_uuid, text)
+            self._sends.put_nowait((message_uuid, text))
 
         self._loop.call_soon_threadsafe(_queue)
         return True
+
+    def _remember_sent(self, message_uuid: str, text: str) -> None:
+        """Keep the text of a sent message against its uuid, oldest first out.
+
+        Only `interrupt` reads this, to say which messages a stop threw away,
+        and only the recent ones can still be in the CLI's queue to throw."""
+        self._sent_text[message_uuid] = text
+        while len(self._sent_text) > SENT_TEXT_REMEMBERED:
+            self._sent_text.pop(next(iter(self._sent_text)))
 
     def _refuse_send(self) -> None:
         self._emit("system", {"subtype": "error", "data": {"message": (
             "This session has stopped and cannot take new messages. "
             "Resume it from History to carry on.")}})
+
+    @staticmethod
+    async def _envelope(message_uuid: str, text: str):
+        """One user message, in the shape the CLI's stdin reader expects.
+
+        `query` builds this itself when handed a plain string, but stamps no
+        uuid, and a message without one is a message the CLI cannot report on
+        or cancel. Ours is the id it lists back under `cancelled`."""
+        yield {
+            "type": "user",
+            "message": {"role": "user", "content": text},
+            "parent_tool_use_id": None,
+            "uuid": message_uuid,
+        }
 
     def set_permission_mode(self, mode: str) -> None:
         """Change the permission mode mid-session (ISSUE-012). The SDK applies
@@ -546,10 +614,77 @@ class SdkSession:
         return list(self._pending_meta.values())
 
     def interrupt(self) -> None:
+        """Stop the turn, and take everything queued behind it down too.
+
+        Stop has to mean stop. Now that a message typed mid-turn goes straight
+        to the CLI rather than waiting here, anything typed while Claude was
+        working is already in the CLI's queue when the button is pressed, and a
+        plain interrupt leaves it there to start a fresh turn a moment later --
+        which reads as a stop that did nothing."""
         if self._loop and self._client:
             self._loop.call_soon_threadsafe(
-                lambda: asyncio.ensure_future(self._client.interrupt())
+                lambda: asyncio.ensure_future(self._interrupt())
             )
+
+    async def _interrupt(self) -> None:
+        if self._cancels_queued_on_interrupt():
+            try:
+                response = await self._client._query._send_control_request(
+                    {"subtype": "interrupt", "cancel_queued": True})
+            except Exception:
+                # An interrupt that cannot be sent the good way is still worth
+                # sending: a turn left running is the worse failure.
+                pass
+            else:
+                self._report_cancelled(response)
+                return
+        try:
+            await self._client.interrupt()
+        except Exception as exc:
+            self._emit("system", {"subtype": "error",
+                                  "data": {"message": f"could not stop: {exc}"}})
+
+    def _cancels_queued_on_interrupt(self) -> bool:
+        """Whether to ask for `cancel_queued` on the interrupt.
+
+        Two things have to hold. The CLI has to honour the field, which it
+        advertises as `interrupt_cancel_queued_v1`; an older one ignores it and
+        interrupts without sweeping the queue, so asking costs nothing but also
+        buys nothing. And the SDK has to let us ask at all: `interrupt()` takes
+        no arguments and `SDKControlInterruptRequest` carries no such field, so
+        the request goes out through the client's own control channel, which is
+        private and may not survive an SDK upgrade.
+
+        Capabilities arrive with the init message, which the CLI sends on the
+        first turn, so they are unknown until then. Unknown is treated as
+        capable: the field is documented as ignored by CLIs that predate it,
+        and refusing to send it before init would disable this on exactly the
+        stop most worth getting right, the one during the first turn."""
+        if self._capabilities is not None \
+                and "interrupt_cancel_queued_v1" not in self._capabilities:
+            return False
+        query = getattr(self._client, "_query", None)
+        return hasattr(query, "_send_control_request")
+
+    def _report_cancelled(self, response) -> None:
+        """Say which messages the stop threw away.
+
+        The CLI answers an interrupt with the uuids it removed from its queue.
+        Those are messages the user wrote and watched appear in the transcript,
+        so they are worth naming: without this they sit there looking sent and
+        never answered."""
+        if not isinstance(response, dict):
+            return
+        cancelled = response.get("cancelled")
+        if not isinstance(cancelled, list) or not cancelled:
+            return
+        texts = [self._sent_text[u] for u in cancelled if u in self._sent_text]
+        if texts:
+            listed = "; ".join(_one_line(t) for t in texts)
+            message = f"Stopped before reading {len(cancelled)} queued message(s): {listed}"
+        else:
+            message = f"Stopped before reading {len(cancelled)} queued message(s)."
+        self._emit("system", {"subtype": "note", "data": {"message": message}})
 
     # ------------------------------------------------------------- approvals
 
@@ -859,6 +994,13 @@ class SdkSession:
                 sid = data.get("session_id")
                 if sid:
                     self._manager.set_sdk_session_id(self._session_id, sid)
+                # What this CLI's control protocol can do, which `server_info`
+                # does not carry: it answers the initialize round trip with the
+                # command list and no capabilities at all. Read by
+                # `_cancels_queued_on_interrupt`.
+                caps = data.get("capabilities")
+                if isinstance(caps, list):
+                    self._capabilities = caps
             self._emit("system", {"subtype": getattr(msg, "subtype", None), "data": data})
         elif isinstance(msg, ResultMessage):
             result_text = getattr(msg, "result", None)
