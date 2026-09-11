@@ -36,6 +36,7 @@ or Git tab.
 
 Dirty tracking, as the worklog expected.
 
+
 `state.issuePristine` holds a signature of the draft as it was loaded, and
 `issueDirty()` compares the live draft against it. `isEditing()` calls that
 instead of testing whether `issueDraft` exists at all. The signature is
