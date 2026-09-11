@@ -40,6 +40,7 @@ they are grouped here rather than treated as blockers.
 
 All four, none of them large.
 
+
 **aiohttp is floored at 3.12.14** in `pyproject.toml`, with the reason in a
 comment above the line: that is the release which fixed CVE-2025-53643, request
 smuggling through trailer-section parsing in the pure-Python HTTP parser. The
