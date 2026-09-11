@@ -38,6 +38,7 @@ told to disconnect.
 `CodinianApp` connects `Gio.Application::shutdown` to `_on_shutdown`, which calls
 a new `SdkRuntime.close_all_threadsafe()`.
 
+
 The threadsafe wrapper waits, where `close_threadsafe` does not, and the
 docstring says why: the asyncio loop lives in a daemon thread, so the moment the
 GTK main loop returns the process ends and that thread goes with it. Waiting is
