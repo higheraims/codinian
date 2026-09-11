@@ -15,6 +15,7 @@ With several sessions running, finding which one is blocked means clicking throu
 sidebar. One queue of everything waiting on you, ordered by how long it has waited, turns
 that into a single screen: useful on the desktop, necessary on a phone.
 
+
 Each entry shows the session, the tool and its input, and approve/deny inline, so a queue
 of five approvals is five taps rather than five navigations.
 
