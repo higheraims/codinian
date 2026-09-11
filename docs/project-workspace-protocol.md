@@ -274,15 +274,15 @@ The format the README in `issues/` describes, made machine-writable.
   place; the settings `sections` list only drives what the editor offers, never
   what the parser accepts.
 - Round-tripping a file with no edits must produce byte-identical output for
-  any file already in this format. That is the test. Running it over the 22
-  real issues in `issues/` found two normalisations, neither of which is
-  a bug: a file whose last line has no trailing newline gains one, and a YAML
+  any file already in this format. That is the test. Run over this tracker as
+  it stood at ISSUE-023, 22 files, it found two normalisations, neither of which
+  is a bug: a file whose last line has no trailing newline gains one, and a YAML
   comment trailing a front-matter value is lost,
   because `yaml.safe_load` discards comments and nothing is left to re-emit
   them from. Only `_TEMPLATE.md` has such comments, and it is not an issue
-  file — the parser skips it. The three real issue files that were missing a
-  trailing newline have since been given one, so all 23 now round-trip
-  unchanged.
+  file, and the parser skips it. The three files that were missing a trailing
+  newline were given one, after which every file round-tripped unchanged. The
+  rule is the contract; the count is only what it has been measured against.
 
 ## What the client renders
 

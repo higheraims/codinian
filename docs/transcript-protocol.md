@@ -22,11 +22,20 @@ up to N ignores anything `<= N`. Backlog replay (below) uses it too.
 
 ### Types and their extra fields
 
-- **`system`** `{ subtype: "init"|"error"|"note", data: object }`
+- **`system`** `{ subtype: "init"|"error"|"note"|"permission_mode"|string, data: object }`
   Session lifecycle. `init.data` carries `model`, `cwd`, `sdk_session_id`, and the
-  tool list. `error.data` carries `message`.
+  tool list. `error.data` carries `message`. `note.data` carries one too: a note
+  is how the backend reports something the user did not ask for, such as the
+  queued messages a Stop threw away (ISSUE-056). `permission_mode.data` carries
+  `permission_mode`.
 
-- **`text`** `{ role: "assistant"|"user", text: string, source?: "operator"|"injected" }`
+  The subtype is open-ended because the CLI's own system messages pass straight
+  through under whatever subtype they came with. A renderer that does not know
+  one shows `data.message` if there is one and draws nothing if there is not:
+  bookkeeping subtypes carry no message, and rendering them as a bare "note"
+  pushes the conversation apart to say nothing.
+
+- **`text`** `{ role: "assistant"|"user", text: string, source?: "operator"|"briefing"|"injected" }`
   A finished text block. (M1 sends whole blocks; streaming deltas are a later
   enhancement, same type with a `partial: true` flag.)
 
@@ -192,7 +201,12 @@ Derived from events, not from output timing:
 - `awaiting_approval`: at least one `approval_request` or `question_request` is
   pending.
 - `awaiting_input`: the turn finished (`usage` seen) and the session is idle,
-  waiting for the next user message.
+  waiting for the next user message. Not terminal: the CLI can pick work back up
+  after a turn has ended, and an assistant or user message arriving on an idle
+  session puts it back to `working` (ISSUE-055). Only those two count. A rate
+  limit or a task notification can land on a genuinely idle session, and a
+  status that went to `working` on one of those would have nothing to bring it
+  back.
 - `done`: the SDK session ended.
 - `error`: a `system`/error or a failed turn.
 
@@ -235,11 +249,14 @@ Messages are JSON, one per frame.
 
 - `{ "t": "error", "error": code, ... }`
   A reply to something the client asked for. Codes: `stale_or_unknown_request`
-  (a `resolve` naming an approval that is no longer pending, which now means
-  another client answered it first: a request that died unanswered says so with
-  `approval_expired` instead of waiting to refuse the answer), `session_start_failed`
-  (a `create` that could not start, with `detail`), `unknown_permission_mode`,
-  `unknown_session`, and `request_failed` for anything else. None of these close
+  (a `resolve` or `answer` naming a request that is no longer pending, which now
+  means another client answered it first: a request that died unanswered says so
+  with `approval_expired` instead of waiting to refuse the answer),
+  `session_start_failed` (a `create` that could not start, with `detail`),
+  `session_not_running` (a `send` to a session whose turn loop has stopped, or to
+  a terminal session, which is driven from the desktop app: ISSUE-036,
+  ISSUE-038), `unknown_permission_mode`, `unknown_session`, `close_failed`,
+  `rename_failed`, and `request_failed` for anything else. None of these close
   the socket.
 
 ### Subagent transcripts
@@ -301,10 +318,14 @@ started twice.
 - `{ "t": "send", "session_id": id, "text": string }`
   A new user message. Backend calls the SDK client's `query`.
 - `{ "t": "interrupt", "session_id": id }`
-  Stops the turn a session is in the middle of (ISSUE-033). The turn ends at a
-  safe point rather than instantly. There is no reply either way: by the time a
-  stop reaches the server the turn may already have finished, and telling the
-  user their stop failed would be worse than saying nothing.
+  Stops the turn a session is in the middle of (ISSUE-033), and cancels whatever
+  was queued behind it: a message typed mid-turn is already in the CLI's queue
+  when Stop is pressed, and leaving it there to start a fresh turn a moment
+  later reads as a stop that did nothing. What it threw away is named, not
+  counted, in a `system` event with subtype `note` (ISSUE-056). The turn ends at
+  a safe point rather than instantly. There is no error reply either way: by
+  the time a stop reaches the server the turn may already have finished, and
+  telling the user their stop failed would be worse than saying nothing.
 - `{ "t": "resolve", "session_id": id, "request_id": id, "decision": "allow"|"deny", "updated_input": object|null, "reason": string|null }`
   Resolves a pending `approval_request`. **`session_id` is required**: approvals
   are held per session, so without it the server has nothing to look up and
@@ -401,6 +422,14 @@ inside it (`project-workspace-protocol.md`).
   already running, between tool calls (ISSUE-056). It cannot reach a turn that
   is blocked inside a tool call, so Stop is still the control for a command
   that has hung, and Stop cancels anything queued behind the turn it stops.
+- A message the client could not send stays in the composer. Whatever writes to
+  the socket has to report whether the frame reached an open one, because a
+  browser discards a frame written to a closing or closed socket without raising
+  anything: the call looks like it worked. Clearing the box on that is how a
+  message is lost with no record of it in the app or in the conversation, so the
+  text stays put and the client says the connection is down. An approval or an
+  answer that fails the same way hands its card back rather than leaving it
+  dimmed and looking settled.
 - Theme-aware (light and dark), responsive, no external network dependencies:
   the same bundle loads inside WebKitGTK and in a plain browser.
 - `?theme=light` or `?theme=dark` on the page URL forces a palette; with no such

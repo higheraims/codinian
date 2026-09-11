@@ -26,8 +26,11 @@ SDK renders as a stream of typed events: assistant messages with their markdown
 intact, thinking blocks, tool calls as cards you can fold open, inline diffs for
 every Edit and Write, plan documents, and nested subagent work. Every tool call
 that needs approval stops and waits for an Approve or Deny, from any connected
-client. A second, older session kind runs the `claude` CLI in a raw VTE terminal
-for cases the transcript view does not cover.
+client, and a question the model asks outright arrives as its options on
+buttons rather than as a prompt you have to read and retype. The composer stays
+live while a turn runs, so a word to redirect Claude reaches it between tool
+calls without ending the turn. A second, older session kind runs the `claude`
+CLI in a raw VTE terminal for cases the transcript view does not cover.
 
 **A cross-session approval inbox.** When several sessions are working at once,
 their pending approvals collect in one place, so a session that is blocked
@@ -62,9 +65,9 @@ unattended in an auto-approve mode comes back in that mode rather than dropping 
 **The smaller things.** Per-session cost and token totals; the plan's usage
 windows read out of a `/usage` you run yourself; permission-mode switching mid
 session; full-text search across every stored transcript; session templates with
-per-folder permission defaults; streaming output with an interrupt; desktop
-notifications for approvals; and a light/dark theme applied to both the GTK shell
-and the web panes.
+per-folder permission defaults; streaming output with a Stop that also clears
+what was queued behind the turn; desktop notifications for approvals; and a
+light/dark theme applied to both the GTK shell and the web panes.
 
 ## Requirements
 

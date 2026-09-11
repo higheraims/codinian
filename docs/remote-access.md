@@ -114,17 +114,29 @@ The query form exists because the browser WebSocket API cannot set headers.
 Static assets (the HTML, CSS and JS) are served without a token; they are the
 same files for everybody and hold no session data.
 
-| Method | Path                        | Description                                       |
-|--------|-----------------------------|---------------------------------------------------|
-| GET    | `/`                         | The web UI (`remote/static/index.html`)           |
-| GET    | `/api/auth`                 | `{"ok": true}`, or 401. Lets a client check a token |
-| GET    | `/api/ws`                   | The transcript WebSocket (see below)              |
-| GET    | `/api/sessions`             | List all sessions as JSON                         |
-| GET    | `/api/sessions/{id}`        | One session, 404 if unknown                       |
-| GET    | `/api/sessions/{id}/output` | A terminal session's screen as HTML                |
-| POST   | `/api/sessions/{id}/inject` | Send text to a terminal session, as if typed       |
-| GET    | `/api/sessions/{id}/image/{tool_use_id}/{n}` | One image from a tool result       |
-| GET    | `/api/history/{sdk_id}/image/{tool_use_id}/{n}` | The same, from a stored transcript |
+| Method | Path                                            | Description                                         |
+|--------|-------------------------------------------------|-----------------------------------------------------|
+| GET    | `/`                                             | The web UI (`remote/static/index.html`)             |
+| GET    | `/api/auth`                                     | `{"ok": true}`, or 401. Lets a client check a token |
+| GET    | `/api/prefs`                                    | What the transcript footer should show              |
+| GET    | `/api/ws`                                       | The transcript WebSocket (see below)                |
+| GET    | `/api/sessions`                                 | List all sessions as JSON                           |
+| GET    | `/api/sessions/{id}`                            | One session, 404 if unknown                         |
+| GET    | `/api/sessions/{id}/output`                     | A terminal session's screen as HTML                 |
+| POST   | `/api/sessions/{id}/inject`                     | Send text to a terminal session, as if typed        |
+| GET    | `/api/sessions/{id}/commands`                   | The slash commands and skills a session has         |
+| GET    | `/api/sessions/{id}/subagents/{agent_id}`       | One subagent's transcript                           |
+| GET    | `/api/sessions/{id}/image/{tool_use_id}/{n}`    | One image from a tool result                        |
+| GET    | `/api/history/search?q=`                        | Full-text search across stored transcripts          |
+| GET    | `/api/history/{sdk_id}`                         | A stored conversation, with no live session         |
+| GET    | `/api/history/{sdk_id}/image/{tool_use_id}/{n}` | The same, from a stored transcript                  |
+| POST   | `/api/history/{sdk_id}/resume`                  | Start a live session from a stored one              |
+
+This is the list of what answers, not the contract for each one. The session,
+history and subagent routes are specified in
+[transcript-protocol.md](transcript-protocol.md), and the project workspace
+adds a `/api/projects` family of its own, specified in
+[project-workspace-protocol.md](project-workspace-protocol.md).
 
 A request without a token gets `401 {"error": "unauthorized"}`. A request
 carrying an `Origin` header from a different host gets
@@ -162,8 +174,11 @@ anything this app wrote.
 `/api/ws` speaks the event protocol in
 [transcript-protocol.md](transcript-protocol.md): it streams `TranscriptEvent`s
 for subscribed sessions and accepts `subscribe`, `unsubscribe`, `send`,
-`resolve` and `create`. This is the interesting surface. `resolve` is how a tool
-call gets approved or denied, from the desktop pane or from a phone.
+`interrupt`, `resolve`, `answer`, `create`, `close`, `rename`,
+`set_permission_mode` and the two inbox verbs. This is the interesting surface.
+`resolve` is how a tool call gets approved or denied, from the desktop pane or
+from a phone, and `answer` is how a question the model asked gets answered
+(ISSUE-050).
 
 Connect with the token in the query string:
 
@@ -171,11 +186,10 @@ Connect with the token in the query string:
 ws://localhost:8787/api/ws?token=<token>
 ```
 
-Errors come back as `{"t": "error", "error": "<code>"}`. Current codes:
-`stale_or_unknown_request` for a `resolve` naming an approval that is no longer
-pending, `session_start_failed` when a `create` could not start (the `detail`
-field says why), and `request_failed` for anything else that went wrong
-handling a message. None of them close the socket.
+Errors come back as `{"t": "error", "error": "<code>"}` and none of them close
+the socket. The codes are listed once, with the messages they answer, in
+[transcript-protocol.md](transcript-protocol.md); a second list here is a list
+that goes stale.
 
 ## Approvals, restarts and races
 
@@ -232,9 +246,6 @@ applies (the bind must be loopback, the request must come from loopback, and
 `tailscale serve` must actually be proxying this port), it is weaker than the
 token. It is worth having only if you would rather not paste a token at all and
 you accept that any process on this machine can then drive your sessions.
-
-Changing it means editing `config.json` and restarting Codinian. There is no
-switch in the app, on purpose.
 
 ## What the token does not protect
 
