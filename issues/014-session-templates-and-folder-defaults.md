@@ -16,6 +16,7 @@ permission mode, and the same MCP configuration every time. Store defaults per w
 directory and offer named templates in the new-session dialog, so "start a session in
 that project" is one click with the right settings already applied.
 
+
 Backlog item from the M4 list in the pivot plan. It becomes more valuable as the number of
 per-session settings grows: permission mode ([[ISSUE-012]]), MCP servers, and any tools
 made available to sessions ([[ISSUE-018]]).
