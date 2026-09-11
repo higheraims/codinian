@@ -107,6 +107,27 @@ packaging/install.sh
 Run `packaging/install.sh --uninstall` to remove them. Nothing is copied except
 the `.desktop` entry and the icon; the app still runs from the checkout.
 
+## Tests
+
+```bash
+pip install --user pytest    # if not already present
+python3 -m pytest
+```
+
+559 tests, about three seconds, no network and no display. They cover the parts
+of the app that do not import `gi`: the issue format, the project registry and
+its settings, path containment, git, the config and session database, the event
+bus, the permission-mode tables, transcript reading and search, and the
+server's authentication middleware. The GTK layer (`window.py`,
+`settings_view.py`, the dialogs) and the SDK turn loop have no tests.
+
+Nothing is mocked where the real thing will do: `test_vcs.py` runs against
+real repositories in a temp directory, and `test_server_auth.py` drives a real
+aiohttp application. `tests/conftest.py` repoints `HOME` and git's config
+before any app module is imported, so a run cannot reach your own session
+database, project registry or transcripts; `test_sandbox.py` checks that
+repointing still works.
+
 ## How it talks to Claude
 
 Codinian starts and supervises your own local `claude` process through the

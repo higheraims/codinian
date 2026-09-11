@@ -16,6 +16,11 @@ requires-python = ">=3.12"
 # unbounded to resolve to whatever is already installed (ISSUE-041).
 dependencies = ["aiohttp>=3.12.14", "claude-agent-sdk", "qrcode"]
 
+[project.optional-dependencies]
+# The suite itself needs nothing but pytest; every other import it makes is
+# already a runtime dependency.
+test = ["pytest>=8"]
+
 [project.urls]
 Homepage = "https://github.com/higheraims/codinian"
 Issues = "https://github.com/higheraims/codinian/issues"
@@ -27,3 +32,11 @@ version = {attr = "version.__version__"}
 
 [tool.setuptools.package-data]
 "remote.static" = ["*.html", "*.css", "*.js"]
+
+# Tests live in tests/ and import the app's modules by their bare names
+# (`import issues`), which is how the app imports them too. The repo uses a flat
+# layout, so the root has to be on sys.path for that to work; `pythonpath` does
+# it without a conftest.py at the top level.
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
