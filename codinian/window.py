@@ -12,12 +12,12 @@ gi.require_version("Vte", "3.91")
 gi.require_version("WebKit", "6.0")
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Vte, WebKit
 
-import config as config_module
-import project
-import theme as theme_module
-from events import SessionStatus
-from session import Session, SessionManager, Status
-from version import __version__
+from . import config as config_module
+from . import project
+from . import theme as theme_module
+from .events import SessionStatus
+from .session import Session, SessionManager, Status
+from .version import __version__
 
 IDLE_SECS = 300    # 5 min without output → idle
 STUCK_SECS = 1800  # 30 min without output → stuck

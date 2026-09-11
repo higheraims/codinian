@@ -93,9 +93,14 @@ Clone the repo and run it in place:
 ```bash
 git clone <your-fork-url> codinian
 cd codinian
-pip install --user 'aiohttp>=3.12.14' claude-agent-sdk qrcode   # if not already present
-python3 main.py
+pip install --user 'aiohttp>=3.12.14' pyyaml qrcode                 # if not already present
+pip install --user --no-binary claude-agent-sdk claude-agent-sdk    # see the note below
+python3 -m codinian
 ```
+
+`--no-binary` for the SDK alone: the wheel on PyPI is 317 MB because it bundles
+its own copy of the `claude` binary. Built from the source distribution instead
+it is 345 KB, and it uses the `claude` already on your PATH.
 
 To add a desktop launcher and icon for the current user, pointing at this
 checkout:
@@ -106,6 +111,10 @@ packaging/install.sh
 
 Run `packaging/install.sh --uninstall` to remove them. Nothing is copied except
 the `.desktop` entry and the icon; the app still runs from the checkout.
+
+RPM and Debian packaging, the Fedora COPR repository, and the one dependency no
+released Debian or Ubuntu can currently satisfy are in
+[docs/packaging.md](docs/packaging.md).
 
 ## Tests
 
@@ -118,8 +127,8 @@ python3 -m pytest
 of the app that do not import `gi`: the issue format, the project registry and
 its settings, path containment, git, the config and session database, the event
 bus, the permission-mode tables, transcript reading and search, and the
-server's authentication middleware. The GTK layer (`window.py`,
-`settings_view.py`, the dialogs) and the SDK turn loop have no tests.
+server's authentication middleware. The GTK layer (`codinian/window.py`,
+`codinian/settings_view.py`, the dialogs) and the SDK turn loop have no tests.
 
 Nothing is mocked where the real thing will do: `test_vcs.py` runs against
 real repositories in a temp directory, and `test_server_auth.py` drives a real
@@ -159,6 +168,8 @@ identity headers and why they are attribution rather than authentication, is in
   protocol between the server and its clients.
 - [docs/project-workspace-protocol.md](docs/project-workspace-protocol.md): the
   project registry, the `/api/projects` routes, and the issue format.
+- [docs/packaging.md](docs/packaging.md): building the rpm and deb, the COPR
+  repository, and what each distribution can satisfy.
 - [issues/](issues/): the project's own tracker, one Markdown file per issue.
 
 ## License

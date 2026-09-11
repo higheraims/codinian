@@ -14,29 +14,53 @@ requires-python = ">=3.12"
 # address. Floored at 3.12.14, the release that fixed the last request-smuggling
 # hole in the pure-Python HTTP parser (CVE-2025-53643), rather than left
 # unbounded to resolve to whatever is already installed (ISSUE-041).
-dependencies = ["aiohttp>=3.12.14", "claude-agent-sdk", "qrcode"]
+#
+# PyGObject is not listed, and cannot be: the GTK stack is installed from the
+# distribution because PyGObject builds against the system libraries. A wheel
+# that declared it would try to compile it. The typelib requirements are in
+# README.md and in the packaging metadata, which is where a package manager can
+# act on them.
+dependencies = [
+    "aiohttp>=3.12.14",
+    "claude-agent-sdk",
+    "pyyaml",
+    "qrcode",
+]
 
 [project.optional-dependencies]
 # The suite itself needs nothing but pytest; every other import it makes is
 # already a runtime dependency.
 test = ["pytest>=8"]
 
+[project.scripts]
+codinian = "codinian.main:main"
+
 [project.urls]
 Homepage = "https://github.com/higheraims/codinian"
 Issues = "https://github.com/higheraims/codinian/issues"
 
-# Read from version.py, so the sidebar's "Codinian" and version number agree
-# with the package and there is one place to bump (ISSUE-030).
+# Read from codinian/version.py, so the sidebar's version number agrees with the
+# package and there is one place to bump (ISSUE-030). packaging/bump-version.sh
+# is what keeps the RPM spec and the Debian changelog in step with it.
 [tool.setuptools.dynamic]
-version = {attr = "version.__version__"}
+version = {attr = "codinian.version.__version__"}
 
+# Named rather than discovered. Automatic discovery walked the whole repo and
+# offered to package the issue tracker, the skills and the packaging directory
+# as Python packages, then refused to build at all because it had found several
+# top-level things (ISSUE-047).
+[tool.setuptools.packages.find]
+include = ["codinian*"]
+
+# The browser client's assets. `static` holds no __init__.py and is not a
+# package, so it is package data on `codinian.remote` rather than a package of
+# its own.
 [tool.setuptools.package-data]
-"remote.static" = ["*.html", "*.css", "*.js"]
+"codinian.remote" = ["static/*"]
 
-# Tests live in tests/ and import the app's modules by their bare names
-# (`import issues`), which is how the app imports them too. The repo uses a flat
-# layout, so the root has to be on sys.path for that to work; `pythonpath` does
-# it without a conftest.py at the top level.
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# The tests import the installed-or-in-tree package as `codinian`, so the repo
+# root goes on sys.path. This is what lets the suite run against a checkout with
+# nothing installed.
 pythonpath = ["."]

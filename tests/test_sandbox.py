@@ -16,11 +16,11 @@ from pathlib import Path
 
 import pytest
 
-import claude_history
-import config
-import db
-import project
-import templates
+from codinian import claude_history
+from codinian import config
+from codinian import db
+from codinian import project
+from codinian import templates
 
 REAL_HOME = Path(pwd.getpwuid(os.getuid()).pw_dir)
 

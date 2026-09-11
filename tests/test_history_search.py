@@ -12,8 +12,8 @@ import json
 
 import pytest
 
-import claude_history
-import history_search
+from codinian import claude_history
+from codinian import history_search
 
 
 @pytest.fixture(autouse=True)

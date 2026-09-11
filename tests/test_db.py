@@ -9,9 +9,9 @@ from datetime import datetime
 
 import pytest
 
-import db
-from events import SessionStatus
-from session import Session, Status
+from codinian import db
+from codinian.events import SessionStatus
+from codinian.session import Session, Status
 
 
 @pytest.fixture

@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-import files
+from codinian import files
 
 
 # ---------------------------------------------------------- containment

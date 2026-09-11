@@ -7,15 +7,15 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk
 
-import config as config_module
-import project as project_module
-import session as session_module
-import theme as theme_module
-from db import load_sessions, open_db, save_session
-from remote.server import run_server
-from sdk_session import SdkRuntime
-from session import SessionManager
-from window import CodinianWindow
+from . import config as config_module
+from . import project as project_module
+from . import session as session_module
+from . import theme as theme_module
+from .db import load_sessions, open_db, save_session
+from .remote.server import run_server
+from .sdk_session import SdkRuntime
+from .session import SessionManager
+from .window import CodinianWindow
 
 # Where libadwaita keeps the icons its own widgets ask for by name. Every
 # `Adw.EntryRow` draws one; see `_repair_libadwaita_icons` for why we have to

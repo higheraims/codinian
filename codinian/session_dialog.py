@@ -5,10 +5,10 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, GObject, Gtk
 
-import config as config_module
-import project
-import templates
-from session import Session
+from . import config as config_module
+from . import project
+from . import templates
+from .session import Session
 
 
 class NewSessionDialog(Adw.Dialog):

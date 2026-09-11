@@ -6,7 +6,7 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 
-from events import SessionStatus, TranscriptEvent
+from .events import SessionStatus, TranscriptEvent
 
 # How a terminal session's timing-based Status maps onto the transcript
 # protocol's SessionStatus vocabulary, so both session kinds share one status

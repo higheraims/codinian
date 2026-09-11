@@ -37,9 +37,9 @@ import json
 import os
 from pathlib import Path
 
-import agent_options
-import project
-import session
+from . import agent_options
+from . import project
+from . import session
 
 # `CODINIAN_TEMPLATES_PATH` points this module at a different file, the same
 # way `CODINIAN_CONFIG` does for config.py. Test runs use it to keep from

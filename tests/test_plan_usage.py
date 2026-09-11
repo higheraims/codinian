@@ -7,7 +7,7 @@ unfamiliar line costs one window rather than the whole reading.
 
 from __future__ import annotations
 
-import plan_usage
+from codinian import plan_usage
 
 USAGE_OUTPUT = """Current session: 24% used · resets Aug 21, 10:39am (America/New_York)
 Current week (all models): 6% used · resets Aug 26, 8am (America/New_York)

@@ -8,7 +8,7 @@ import stat
 
 import pytest
 
-import config
+from codinian import config
 
 
 @pytest.fixture(autouse=True)

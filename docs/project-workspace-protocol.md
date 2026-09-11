@@ -286,7 +286,7 @@ The format the README in `issues/` describes, made machine-writable.
 
 ## What the client renders
 
-`remote/static/project.html`, with `project.js` and `project.css` beside the
+`codinian/remote/static/project.html`, with `project.js` and `project.css` beside the
 transcript bundle, sharing `styles.css` for its colour tokens. It is a second
 page rather than a mode of `index.html` so the two can be worked on
 independently, and so the desktop pane can point a WebKitGTK view straight at

@@ -14,7 +14,7 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
-from session import Session, Status
+from .session import Session, Status
 
 DB_PATH = Path.home() / ".local/share/codinian/codinian.db"
 

@@ -29,12 +29,12 @@ from urllib.parse import urlparse
 
 from aiohttp import web
 
-import claude_history
-import files
-import issues as issues_mod
-import project as project_mod
-import vcs
-from session import PERMISSION_MODES, Session
+from .. import claude_history
+from .. import files
+from .. import issues as issues_mod
+from .. import project as project_mod
+from .. import vcs
+from ..session import PERMISSION_MODES, Session
 
 # Answered to the client as {"error": code, "detail": ...}. Kept in one place
 # because the browser maps codes to messages and a typo here is a message the

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-import agent_options
+from codinian import agent_options
 
 
 def test_an_empty_config_sends_only_the_system_prompt_preset():
@@ -139,7 +139,7 @@ def test_an_unknown_permission_mode_falls_back_to_default():
 
 
 def test_the_permission_modes_here_match_the_ones_the_session_layer_accepts():
-    import session
+    from codinian import session
     assert set(agent_options.PERMISSION_MODES) == set(session.PERMISSION_MODES)
 
 

@@ -17,24 +17,22 @@ import hashlib
 import json
 import re
 import secrets
-import sys
 import traceback
 from pathlib import Path
 from urllib.parse import urlparse
 
 from aiohttp import WSMsgType, web
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-import config as config_module  # noqa: E402
-import tailscale  # noqa: E402
-from remote import projects_api  # noqa: E402
-import agent_options  # noqa: E402
-import claude_history  # noqa: E402
-import history_search  # noqa: E402
-import images  # noqa: E402
-import project  # noqa: E402
-from session import PERMISSION_MODES, Session, SessionManager  # noqa: E402
-from sdk_session import SdkRuntime  # noqa: E402
+from .. import agent_options
+from .. import claude_history
+from .. import config as config_module
+from .. import history_search
+from .. import images
+from .. import project
+from .. import tailscale
+from ..sdk_session import SdkRuntime
+from ..session import PERMISSION_MODES, Session, SessionManager
+from . import projects_api
 
 STATIC = Path(__file__).parent / "static"
 

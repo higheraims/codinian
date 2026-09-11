@@ -2,8 +2,9 @@
 Type=Application
 Name=Codinian
 Comment=Run and supervise Claude Agent SDK sessions
-Exec=/usr/bin/python3 @CHECKOUT@/main.py
+Exec=codinian
 Icon=net.higheraims.codinian
 Terminal=false
-Categories=Development;
+Categories=Development;IDE;
+Keywords=Claude;Agent;AI;Sessions;Git;Issues;
 StartupWMClass=net.higheraims.codinian

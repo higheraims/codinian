@@ -12,7 +12,7 @@ import subprocess
 
 import pytest
 
-import tailscale
+from codinian import tailscale
 
 STATUS_JSON = {
     "BackendState": "Running",

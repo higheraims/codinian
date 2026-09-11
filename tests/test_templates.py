@@ -12,8 +12,8 @@ import json
 
 import pytest
 
-import project
-import templates
+from codinian import project
+from codinian import templates
 
 
 @pytest.fixture(autouse=True)

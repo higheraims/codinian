@@ -3,6 +3,11 @@
 # checkout. Run it again after moving the checkout; run with --uninstall to
 # remove what it installed. The app itself still runs from the checkout --
 # nothing is copied but the launcher and the icon.
+#
+# This is the development launcher. An installed package (rpm or deb) ships the
+# desktop file from packaging/ unmodified, where Exec is the `codinian` command
+# on PATH; here there is no such command, so the Exec line is rewritten to run
+# the checkout in place and Path sets the working directory `python3 -m` needs.
 set -euo pipefail
 
 app_id="net.higheraims.codinian"
@@ -18,7 +23,9 @@ if [[ "${1:-}" == "--uninstall" ]]; then
 fi
 
 mkdir -p "$apps_dir" "$icon_dir"
-sed "s|@CHECKOUT@|$checkout|" "$here/$app_id.desktop" > "$apps_dir/$app_id.desktop"
-cp "$checkout/remote/static/codinian.svg" "$icon_dir/$app_id.svg"
+sed -e "s|^Exec=.*|Exec=/usr/bin/python3 -m codinian|" \
+    -e "/^Exec=/a Path=$checkout" \
+    "$here/$app_id.desktop" > "$apps_dir/$app_id.desktop"
+cp "$checkout/codinian/remote/static/codinian.svg" "$icon_dir/$app_id.svg"
 command -v update-desktop-database >/dev/null && update-desktop-database "$apps_dir" || true
 echo "Installed $app_id.desktop pointing at $checkout."

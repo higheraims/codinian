@@ -297,7 +297,7 @@ reader nothing. An optional `under=<path>` restricts the search to one tree.
 
 It is a scan, not an index. 65 transcripts and 131 MiB answer in 155-485 ms,
 because a raw substring test over each file's bytes rejects most of them without
-parsing, and JSON is parsed only for lines that matched. See `history_search.py`
+parsing, and JSON is parsed only for lines that matched. See `codinian/history_search.py`
 for when that stops being true.
 
 `GET /api/history/{sdk_session_id}` returns `{ session_id, cwd, title, mtime,

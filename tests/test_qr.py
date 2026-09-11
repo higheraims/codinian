@@ -6,7 +6,7 @@ import builtins
 
 import pytest
 
-import qr
+from codinian import qr
 
 URL = "http://127.0.0.1:8787/?token=abcdefghijklmnopqrstuvwxyz"
 

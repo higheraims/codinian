@@ -20,13 +20,13 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, GObject, Gtk
 
-import agent_options
-import config as config_module
-import db
-import project
-import theme as theme_module
-from agent_options import default_permission_mode
-from version import __version__
+from . import agent_options
+from . import config as config_module
+from . import db
+from . import project
+from . import theme as theme_module
+from .agent_options import default_permission_mode
+from .version import __version__
 
 # Same order and wording as the browser client's dropdown and the new-session
 # dialog, so a mode means one thing wherever it is chosen (ISSUE-027).

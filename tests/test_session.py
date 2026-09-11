@@ -12,9 +12,9 @@ from datetime import datetime
 
 import pytest
 
-import session as session_module
-from events import EVENT_TYPES, SessionStatus, TranscriptEvent
-from session import Session, SessionManager, Status
+from codinian import session as session_module
+from codinian.events import EVENT_TYPES, SessionStatus, TranscriptEvent
+from codinian.session import Session, SessionManager, Status
 
 
 @pytest.fixture(autouse=True)

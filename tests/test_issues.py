@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-import issues
+from codinian import issues
 from conftest import REPO_ROOT
 
 

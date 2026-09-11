@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-import claude_history
+from . import claude_history
 
 # How many matching lines to keep per transcript. A query like "def " matches
 # thousands of times in one file; nobody reads past the first few, and carrying

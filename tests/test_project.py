@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-import project
+from codinian import project
 
 
 @pytest.fixture(autouse=True)

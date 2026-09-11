@@ -12,7 +12,7 @@ import json
 
 import pytest
 
-from remote import projects_api
+from codinian.remote import projects_api
 
 
 def test_a_date_is_encoded_as_iso_8601():

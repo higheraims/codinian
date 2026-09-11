@@ -16,9 +16,9 @@ import functools
 
 import pytest
 
-import sdk_session
-from sdk_session import SdkSession
-from session import Session, SessionManager
+from codinian import sdk_session
+from codinian.sdk_session import SdkSession
+from codinian.session import Session, SessionManager
 
 
 def async_test(fn):
@@ -83,7 +83,7 @@ def test_the_default_mode_asks_about_everything(manager, tool):
 
 
 def test_every_permission_mode_has_a_defined_answer(manager):
-    from session import PERMISSION_MODES
+    from codinian.session import PERMISSION_MODES
     for mode in PERMISSION_MODES:
         assert make_session(manager, mode)._auto_decision("Bash") in (None, "allow", "defer")
 

@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-import claude_history
+from codinian import claude_history
 
 SESSION = "11111111-2222-3333-4444-555555555555"
 PNG = b"\x89PNG\r\n\x1a\n" + b"pixels"

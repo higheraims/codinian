@@ -6,9 +6,9 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, GObject, Gtk
 
-import templates
-from claude_history import PriorSession, last_permission_mode, list_prior_sessions
-from session import Session
+from . import templates
+from .claude_history import PriorSession, last_permission_mode, list_prior_sessions
+from .session import Session
 
 
 def _relative_time(dt: datetime) -> str:

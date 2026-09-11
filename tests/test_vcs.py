@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-import vcs
+from codinian import vcs
 
 
 def git(root: Path, *args: str) -> str:

@@ -12,7 +12,7 @@ import base64
 
 import pytest
 
-import images
+from codinian import images
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"fake pixel data" * 4
 PNG_B64 = base64.b64encode(PNG).decode()

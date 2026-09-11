@@ -16,7 +16,7 @@ checked without a display.
 
 from __future__ import annotations
 
-import config as config_module
+from . import config as config_module
 
 # What the user picks. "system" is the default and the only one that leaves both
 # halves following the desktop.

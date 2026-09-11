@@ -116,7 +116,7 @@ same files for everybody and hold no session data.
 
 | Method | Path                                            | Description                                         |
 |--------|-------------------------------------------------|-----------------------------------------------------|
-| GET    | `/`                                             | The web UI (`remote/static/index.html`)             |
+| GET    | `/`                                             | The web UI (`codinian/remote/static/index.html`)             |
 | GET    | `/api/auth`                                     | `{"ok": true}`, or 401. Lets a client check a token |
 | GET    | `/api/prefs`                                    | What the transcript footer should show              |
 | GET    | `/api/ws`                                       | The transcript WebSocket (see below)                |

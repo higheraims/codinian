@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-import images
+from . import images
 
 PROJECTS_DIR = Path.home() / ".claude" / "projects"
 

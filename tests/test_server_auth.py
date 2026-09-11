@@ -18,9 +18,9 @@ import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer, make_mocked_request
 
-import config as config_module
-import tailscale
-from remote import server
+from codinian import config as config_module
+from codinian import tailscale
+from codinian.remote import server
 
 TOKEN = "a-real-token-value"
 
