@@ -19,6 +19,7 @@ documents this honestly and recommends an SSH tunnel, but a documented hole is s
 hole, and once [[ISSUE-005]] lets a client approve tool calls, an unauthenticated port
 becomes remote code execution with a button.
 
+
 Fix: generate a token on first run, store it in config, show it in the GTK app so it can
 be copied to a phone or another machine, and require it on every API call and WebSocket
 connection. Bind localhost by default; binding to the LAN becomes an explicit opt-in the
