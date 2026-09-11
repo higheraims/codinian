@@ -17,6 +17,7 @@ in the new-session dialog, on Save as Template, and on the entry rows in
 Settings. Found while screenshotting the new-session dialog to check the
 ISSUE-014 Template group; the Template group itself is fine.
 
+
 Not a Codinian bug. Four bare libadwaita rows in a window with none of this
 project's code reproduce it exactly.
 
