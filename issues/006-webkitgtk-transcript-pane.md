@@ -17,6 +17,7 @@ existing VTE terminal for `terminal` sessions. Because the pane is just another 
 the local server, it needs no separate GTK marshalling for transcript content; only the
 sidebar and its status dots update on the GTK main thread.
 
+
 Also in scope: the new-session dialog (session_dialog.py) grows a kind selector and a
 permission mode; the "Inject a prompt" box routes to `client.query` for `sdk` sessions and
 keeps writing to the terminal for `terminal` ones; approvals resolve from inside the
