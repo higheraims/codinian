@@ -17,6 +17,7 @@ afterwards: not the GTK sidebar, not `GET /api/projects`, not the new-session
 dialog's project combo. Files, issues, sessions and slash commands all sorted;
 projects were the omission.
 
+
 Registration order carries no meaning. It records the afternoon someone happened
 to add a folder, so a project's position in the list is unguessable and the list
 gets harder to scan as it grows.
