@@ -17,6 +17,7 @@ a blunt instrument. The usual pattern is to review carefully for the first few e
 switch to `acceptEdits` once the work looks right, then back when the session moves into
 unfamiliar code.
 
+
 Expose the mode as a control on a running session, showing which mode is active at a glance
 so `bypassPermissions` is never a state you are in by accident.
 
