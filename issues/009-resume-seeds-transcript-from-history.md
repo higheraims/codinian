@@ -17,6 +17,7 @@ invisible as far as the user is concerned. The fix is to read it from disk: the 
 CLI already writes a JSONL transcript per session under `~/.claude/projects/*/*.jsonl`,
 which is what `claude_history.py` (83 lines) reads today to build the resume picker.
 
+
 Expand that into a full JSONL-to-`TranscriptEvent` parser, so resuming seeds the pane with
 prior turns and then continues live via SDK resume. The parser is the same mapping problem
 as the SDK driver's, from a different source, and both should land on the identical event
