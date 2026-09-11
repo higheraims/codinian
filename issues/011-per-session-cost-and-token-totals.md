@@ -16,6 +16,7 @@ Every SDK result message carries usage, so the numbers are already arriving as `
 cache tokens, plus cost where the SDK reports it. Across several long-running sessions
 this is the difference between knowing which one is expensive and guessing.
 
+
 The transcript footer from [[ISSUE-005]] is the natural place for the current session's
 total; the sidebar can carry a compact figure per session.
 
