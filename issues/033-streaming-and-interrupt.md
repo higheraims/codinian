@@ -15,6 +15,7 @@ A turn renders nothing between the last tool result and the finished text block.
 `ClaudeAgentOptions.include_partial_messages` would emit the deltas that fill
 that gap, and `SdkSession.interrupt()` already exists to act on what they show.
 
+
 Both are held over from M1, where `sdk_session.py` says partial streaming is "a
 later enhancement". This is that.
 
