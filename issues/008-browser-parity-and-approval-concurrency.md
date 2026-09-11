@@ -15,6 +15,7 @@ Bring the browser client up to what the embedded pane can do: live transcript, s
 message, approve or deny remotely. This is the away-from-desk workflow the pivot is for:
 a session waiting on an approval should be resolvable from a phone.
 
+
 That makes approval resolution a race. Two clients can answer the same
 `approval_request`, a client can answer one that was already resolved, and a client can
 answer one from a session that has since been restarted. Rule: first resolver wins;
