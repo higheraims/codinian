@@ -1,0 +1,40 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # First, because a tag that disagrees with codinian/version.py would
+      # publish a sdist whose name does not match the tag that produced it.
+      - name: The tag agrees with the version in the tree
+        run: packaging/check-versions.sh "$GITHUB_REF_NAME"
+
+      - name: Build sdist and wheel
+        run: |
+          pip install build
+          python -m build
+
+      # gh is already on the runner, which is one fewer third-party action in
+      # the path of something that signs and publishes.
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            dist/* \
+          || gh release upload "$GITHUB_REF_NAME" dist/* --clobber

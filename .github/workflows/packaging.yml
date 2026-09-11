@@ -1,0 +1,133 @@
+name: packaging
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  versions:
+    name: versions agree
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            packaging/check-versions.sh "$GITHUB_REF_NAME"
+          else
+            packaging/check-versions.sh
+          fi
+
+  rpm:
+    name: rpm (fedora)
+    runs-on: ubuntu-latest
+    container: fedora:44
+    steps:
+      - name: Build tooling
+        run: |
+          dnf -y install --setopt=install_weak_deps=False \
+            rpm-build rpmdevtools rpmlint dnf-plugins-core git-core \
+            python3-devel python3-pip python3-setuptools \
+            desktop-file-utils libappstream-glib
+
+      - uses: actions/checkout@v4
+
+      # The checkout is owned by a different uid than the one dnf left behind,
+      # and .copr/Makefile runs git archive.
+      - name: Trust the checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      # Not in Fedora, so Codinian's COPR carries it and this job builds it the
+      # same way: from the PyPI sdist, which unlike the wheel contains no
+      # bundled claude binary.
+      - name: Build python3-claude-agent-sdk
+        run: |
+          OUTDIR="$PWD" packaging/copr/build-sdk-srpm.sh
+          dnf -y builddep ./python-claude-agent-sdk-*.src.rpm
+          rpmbuild --rebuild ./python-claude-agent-sdk-*.src.rpm
+
+      - name: Build codinian
+        run: |
+          make -f .copr/Makefile srpm outdir="$PWD/srpms"
+          rpmbuild --rebuild ./srpms/codinian-*.src.rpm
+
+      - name: Lint
+        continue-on-error: true
+        run: rpmlint ~/rpmbuild/RPMS/noarch/*.rpm
+
+      # The point of this step: it proves every generated dependency resolves
+      # against real Fedora repositories, including the SDK package built above.
+      - name: Install both packages
+        run: dnf -y install ~/rpmbuild/RPMS/noarch/*.rpm
+
+      # Run from / rather than from the checkout. The checkout has a codinian/
+      # directory in it, and cwd comes first on sys.path, so this would import
+      # the source tree and report success without the installed package being
+      # involved at all.
+      - name: Check what was installed
+        working-directory: /
+        run: |
+          test -x /usr/bin/codinian
+          desktop-file-validate /usr/share/applications/net.higheraims.codinian.desktop
+          appstream-util validate-relax --nonet \
+            /usr/share/metainfo/net.higheraims.codinian.metainfo.xml
+          # The GTK modules are left out on purpose: importing them needs a
+          # display, and a container has none.
+          python3 -c "import codinian, codinian.issues, codinian.remote.server; print(codinian.__version__)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rpms
+          path: ~/rpmbuild/RPMS/noarch/*.rpm
+
+  deb:
+    name: deb (${{ matrix.image }})
+    runs-on: ubuntu-latest
+    container: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["debian:sid", "debian:trixie", "ubuntu:25.10"]
+    steps:
+      - name: Build tooling
+        run: |
+          apt-get update -qq
+          apt-get install -y --no-install-recommends \
+            debhelper dh-python python3-all python3-setuptools \
+            pybuild-plugin-pyproject desktop-file-utils build-essential \
+            ca-certificates git
+
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          cp -r packaging/debian debian
+          dpkg-buildpackage -us -uc -b
+
+      # aiohttp carries the remote server and is floored at the release that
+      # fixed CVE-2025-53643. No Debian or Ubuntu release currently ships a
+      # version that old floor accepts except sid, so this records what each
+      # target can actually offer rather than leaving it to be discovered by
+      # someone installing the package.
+      - name: What this distribution can satisfy
+        run: |
+          {
+            echo "### ${{ matrix.image }}"
+            echo '```'
+            apt-cache policy python3-aiohttp
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Allowed to fail: on a distribution whose aiohttp predates the fix, the
+      # package is meant to refuse to install rather than run a parser with a
+      # known request-smuggling hole. The build above is the part that must pass.
+      - name: Install check
+        continue-on-error: true
+        run: apt-get install -y ../codinian_*.deb
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb-${{ strategy.job-index }}
+          path: ../*.deb

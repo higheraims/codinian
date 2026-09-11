@@ -1,0 +1,33 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.12 is the floor pyproject.toml declares; 3.13 is what the newer
+        # distributions ship. The GTK layer is not exercised here and does not
+        # need to be: nothing the suite imports pulls in gi.
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # --no-binary for the SDK alone. Its wheel on PyPI is 317 MB because it
+      # bundles a copy of the claude binary; the source distribution is 345 KB
+      # and is all the suite needs, since no test starts a CLI.
+      - name: Install
+        run: pip install --no-binary claude-agent-sdk '.[test]'
+
+      - name: Run the suite
+        run: python -m pytest -q
