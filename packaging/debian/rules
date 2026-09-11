@@ -1,0 +1,23 @@
+#!/usr/bin/make -f
+export PYBUILD_NAME = codinian
+
+APPID = net.higheraims.codinian
+
+%:
+	dh $@ --with python3 --buildsystem=pybuild
+
+# The desktop entry, the AppStream metadata and the icon are not Python package
+# data, so pybuild does not place them. The icon is stored under its own name in
+# the source tree and has to land under the application id, which is the name
+# the desktop entry's Icon= key refers to.
+override_dh_auto_install:
+	dh_auto_install
+	install -Dpm 0644 packaging/$(APPID).desktop \
+		debian/codinian/usr/share/applications/$(APPID).desktop
+	install -Dpm 0644 packaging/$(APPID).metainfo.xml \
+		debian/codinian/usr/share/metainfo/$(APPID).metainfo.xml
+	install -Dpm 0644 codinian/remote/static/codinian.svg \
+		debian/codinian/usr/share/icons/hicolor/scalable/apps/$(APPID).svg
+
+override_dh_auto_test:
+	desktop-file-validate packaging/$(APPID).desktop

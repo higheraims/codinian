@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 higheraims -->
+<component type="desktop-application">
+  <id>net.higheraims.codinian</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+
+  <name>Codinian</name>
+  <summary>Run and supervise Claude Agent SDK sessions</summary>
+
+  <description>
+    <p>
+      Codinian starts and supervises your own local Claude Code sessions through
+      the Claude Agent SDK, and puts a window around them: a sidebar of running
+      sessions, a transcript pane, tool-call approvals, and the project's git
+      state and issue tracker beside them.
+    </p>
+    <p>
+      The same sessions are reachable from a phone or a second machine over a
+      loopback-bound HTTP server, which is intended to be published on a tailnet
+      rather than on a LAN. Approving a tool call runs that tool on the machine
+      Codinian is running on, so the server binds to localhost by default and a
+      token is required for every request.
+    </p>
+    <p>
+      Authentication is whatever the claude CLI already uses on the machine.
+      Codinian does not proxy, store or forward Anthropic credentials and adds no
+      account of its own.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">net.higheraims.codinian.desktop</launchable>
+
+  <url type="homepage">https://github.com/higheraims/codinian</url>
+  <url type="bugtracker">https://github.com/higheraims/codinian/issues</url>
+  <url type="vcs-browser">https://github.com/higheraims/codinian</url>
+
+  <developer id="net.higheraims">
+    <name>higheraims</name>
+  </developer>
+
+  <categories>
+    <category>Development</category>
+  </categories>
+
+  <keywords>
+    <keyword>Claude</keyword>
+    <keyword>agent</keyword>
+    <keyword>sessions</keyword>
+    <keyword>git</keyword>
+    <keyword>issues</keyword>
+  </keywords>
+
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </supports>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="0.2.0" date="2026-09-11"/>
+  </releases>
+</component>

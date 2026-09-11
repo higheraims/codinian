@@ -26,5 +26,15 @@ docs/Screenshot*.png
 docs/art/*.eps
 docs/art/*.zip
 
+# Packaging build products. The rpm ones land in ~/rpmbuild by default; these
+# are the paths used when building in place (.copr/Makefile, dpkg-buildpackage).
+/build/
+/dist/
+/debian/
+.copr-sources/
+*.rpm
+*.deb
+*.tar.gz
+
 # OS
 .DS_Store
