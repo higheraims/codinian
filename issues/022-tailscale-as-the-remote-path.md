@@ -16,6 +16,7 @@ machine's MagicDNS name over HTTPS, with Tailscale issuing the certificate. That
 is a better story than either option [[ISSUE-007]] shipped, and the app currently
 knows nothing about it.
 
+
 `tailscale serve --bg --https=443 8787` terminates TLS and proxies to the app,
 which means the bind stays on `127.0.0.1` and the "Allow access from the local
 network" switch stays off. Nothing is exposed to the LAN, no certificate is
