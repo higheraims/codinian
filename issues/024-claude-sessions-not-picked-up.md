@@ -31,6 +31,7 @@ empty again. The durable record has always been the CLI's own JSONL under
 `~/.claude/projects`, which `claude_history.py` has been reading since
 ISSUE-009, but only for the desktop Resume dialog.
 
+
 So `list_prior_sessions` grew an `under` filter and the tab reuses it.
 `GET /api/projects/{id}` now carries a `history` list beside `sessions`: every
 conversation whose recorded `cwd` is inside the project, newest first, with the
