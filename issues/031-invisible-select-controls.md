@@ -32,6 +32,7 @@ controls were near-white text on the native light widget. The `<input>` next to
 each one looked right because WebKit does honour background there. Reproduced in
 WebKitGTK rather than Chromium, which is the only place the difference shows.
 
+
 `color-scheme` on `:root` was the first attempt and does not fix it: the
 computed value took effect and the widget stayed light. The fix is to stop the
 engine painting the control at all, with `appearance: none` and an explicit
