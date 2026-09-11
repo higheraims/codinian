@@ -17,6 +17,7 @@ still saw the original symptom, which turned out to be [[ISSUE-054]]. The report
 is quoted here because it is what led to finding this, not because this explains
 it.
 
+
 Reported from a session left running for another project:
 
 > Sometimes the tail end of model chat doesn't display until the next prompt is
