@@ -18,6 +18,7 @@ is built into Firefox, and the script speaks its length-prefixed JSON protocol d
 a socket. It runs against a throwaway profile, so it never touches the profile you browse
 with and does not disturb a Firefox you already have open.
 
+
 It exists because the built-in `WebFetch` cannot get past a JavaScript wall. `bugs.winehq.org`
 and `gitlab.winehq.org` sit behind Anubis, which demands a proof-of-work before serving
 anything; plain HTTP fetchers get a "Making sure you're not a bot!" stub. A real browser
