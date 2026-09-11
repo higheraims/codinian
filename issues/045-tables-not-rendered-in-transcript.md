@@ -15,6 +15,7 @@ Reported from a screenshot of a live session: a reply that contained a two-colum
 markdown table showed up in the transcript as the raw source, pipes and all, with
 the `|---|---|` delimiter row sitting on its own line in the middle of the prose.
 
+
 `renderMarkdown` in `remote/static/app.js` handled headings, lists, fenced code and
 the inline rules, and everything else fell through to a paragraph. A table matched
 nothing, so each row became a paragraph line. The issue-body preview in
