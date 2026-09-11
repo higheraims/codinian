@@ -15,6 +15,7 @@ A session that spawns subagents produces work the main transcript reports only a
 tool call and a result. What the subagent did in between is where the time and the tokens
 went, and it is invisible.
 
+
 Render subagent activity as its own nested transcript inside the parent's tool card:
 which agent, what it was asked, what it did, what it returned. With several subagents
 running at once, showing which are still working is the difference between a session that
