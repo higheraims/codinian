@@ -47,6 +47,7 @@ blank line, and the form should offer both.
 `remote/static/project.js` (form and `doCommit`), `remote/static/project.css`,
 and the endpoint's entry in `docs/project-workspace-protocol.md`.
 
+
 Checked by driving the page: typing into both fields, checking paths, clicking
 Commit, then reading the message back out of `git log` — subject and body landed
 in the right places and a `#123` line survived. Also checked a commit with no
