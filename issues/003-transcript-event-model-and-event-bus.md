@@ -16,6 +16,7 @@ transcript. Today `Session` (session.py, 118 lines) carries a status derived fro
 timing, and `SessionManager` is a list with callbacks; neither can express "Claude is
 waiting on an approval for tool_use_id X".
 
+
 Define `TranscriptEvent` covering `text`, `thinking`, `tool_use`, `tool_result`,
 `approval_request`, `approval_resolved`, `usage`/`result`, and `system`/`status`. Give
 `Session` a `kind` field (`sdk` or `terminal`), an ordered event list, and a status
