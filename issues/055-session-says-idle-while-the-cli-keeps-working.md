@@ -14,6 +14,7 @@ related: [ISSUE-054]
 Found while proving [[ISSUE-054]] against a live session, and left out of that
 fix deliberately so the two could be tested apart.
 
+
 A turn that starts a background task ends on a result like any other. The CLI
 picks the work back up when the task reports, which can be an hour later, and
 everything it produces from then on belongs to no turn Codinian knows about. The
