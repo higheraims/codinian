@@ -445,12 +445,20 @@
     };
   }
 
+  // True when the message went to an open socket, false when it never left the
+  // page. Worth returning, because a browser discards a send on a socket that
+  // is closing or closed without raising anything: the call looks like it
+  // worked and nothing arrives. A prompt typed during a reconnect went that
+  // way, cleared out of the composer by the submit handler and delivered to
+  // nobody, with no bubble and no error to say where it had gone.
   function send(obj) {
-    if (!state.ws) return;
+    if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return false;
     try {
       state.ws.send(JSON.stringify(obj));
+      return true;
     } catch (e) {
       console.error('codinian: send failed', e);
+      return false;
     }
   }
 
@@ -528,6 +536,12 @@
     session_not_running:
       'That session is not taking messages. It has stopped, or it is a terminal session, which is driven from the desktop app.',
   };
+
+  // Nothing reached the server at all, so unlike every entry above there is no
+  // verdict to report: the action did not happen, and it is worth repeating
+  // once the socket is back.
+  const NOT_CONNECTED_TEXT =
+    'Not sent: the connection to Codinian is down. It is reconnecting, so try again in a moment.';
 
   function applyServerError(msg) {
     const text = SERVER_ERROR_TEXT[msg.error] || `The server rejected that request (${msg.error}).`;
@@ -980,12 +994,21 @@
       btnDeny.disabled = disabled;
     }
 
+    // Shared with `rejected` below: a decision the server refused and one that
+    // never reached it both leave a card that has to become usable again.
+    function handBack(message) {
+      settled = false;
+      setDisabled(false);
+      errorEl.textContent = message;
+      errorEl.style.display = 'block';
+    }
+
     function resolveWith(decision) {
       if (settled) return;
       settled = true;
       errorEl.style.display = 'none';
       setDisabled(true);
-      send({
+      const delivered = send({
         t: 'resolve',
         session_id: entry.session_id,
         request_id: entry.request_id,
@@ -993,6 +1016,7 @@
         updated_input: null,
         reason: null,
       });
+      if (!delivered) handBack(NOT_CONNECTED_TEXT);
     }
 
     btnApprove.addEventListener('click', () => resolveWith('allow'));
@@ -1000,14 +1024,7 @@
 
     return {
       el,
-      controls: {
-        rejected(message) {
-          settled = false;
-          setDisabled(false);
-          errorEl.textContent = message;
-          errorEl.style.display = 'block';
-        },
-      },
+      controls: { rejected: handBack },
     };
   }
 
@@ -1072,7 +1089,13 @@
     const text = composerInput.value.trim();
     if (!text || !state.currentId) return;
     closePalette();
-    send({ t: 'send', session_id: state.currentId, text });
+    if (!send({ t: 'send', session_id: state.currentId, text })) {
+      // The text stays in the box. It is the one thing here the user wrote by
+      // hand, and clearing it on a send that went nowhere is how a message
+      // ends up with no record of it in the app or in the conversation.
+      showAlert(NOT_CONNECTED_TEXT, 'Your message is still in the composer.');
+      return;
+    }
     composerInput.value = '';
     growComposer();
   });
@@ -2986,12 +3009,21 @@
       editSubmit.disabled = disabled;
     }
 
+    // Shared with `rejected` below: a decision the server refused and one that
+    // never reached it both leave a card that has to become usable again.
+    function handBack(message) {
+      settled = false;
+      setButtonsDisabled(false);
+      sendError.textContent = message;
+      sendError.style.display = 'block';
+    }
+
     function resolveWith(decision, updatedInput) {
       if (settled) return;
       settled = true;
       sendError.style.display = 'none';
       setButtonsDisabled(true);
-      send({
+      const delivered = send({
         t: 'resolve',
         session_id: ev.session_id,
         request_id: ev.request_id,
@@ -2999,6 +3031,7 @@
         updated_input: updatedInput || null,
         reason: reasonInput.value.trim() || null,
       });
+      if (!delivered) handBack(NOT_CONNECTED_TEXT);
     }
 
     btnApprove.addEventListener('click', () => resolveWith('allow', null));
@@ -3035,10 +3068,7 @@
         // The server would not take that answer. Hand the card back rather
         // than leaving a dimmed one the user cannot act on. If the request
         // really is gone, its approval_resolved event replaces the card.
-        settled = false;
-        setButtonsDisabled(false);
-        sendError.textContent = message;
-        sendError.style.display = 'block';
+        handBack(message);
       },
       expired(message) {
         // Unlike `rejected`, this one is final: there is nothing left to
@@ -3145,6 +3175,19 @@
     }
 
     let settled = false;
+
+    // Shared with `rejected` below, for the same reason the approval card
+    // shares its own: an answer the server refused and one that never reached
+    // it both leave a card that has to become usable again. The selections
+    // stay on screen either way, so there is nothing to retype.
+    function handBack(message) {
+      settled = false;
+      btnSkip.disabled = false;
+      updateSubmit();
+      sendError.textContent = message;
+      sendError.style.display = 'block';
+    }
+
     function answer(skip) {
       if (settled) return;
       settled = true;
@@ -3157,13 +3200,14 @@
           if (chosen.size) answers[qtext] = [...chosen].join(', ');
         }
       }
-      send({
+      const delivered = send({
         t: 'answer',
         session_id: ev.session_id,
         request_id: ev.request_id,
         answers,
         response: (!skip && freeform.value.trim()) || null,
       });
+      if (!delivered) handBack(NOT_CONNECTED_TEXT);
     }
 
     btnSend.addEventListener('click', () => answer(false));
@@ -3180,13 +3224,7 @@
         settled = true;
         el.replaceWith(buildQuestionResolvedLine(resolvedEv));
       },
-      rejected(message) {
-        settled = false;
-        btnSkip.disabled = false;
-        updateSubmit();
-        sendError.textContent = message;
-        sendError.style.display = 'block';
-      },
+      rejected: handBack,
       expired(message) {
         // Final, where `rejected` hands the card back: nothing is listening
         // for this answer any more, so the card stops pretending otherwise
