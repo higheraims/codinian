@@ -40,6 +40,7 @@ type into a session whose output the browser never shows: terminal sessions are
 mirrored as HTML through `/api/sessions/{id}/output`, which the web client does
 not fetch, so the reply to anything typed would have gone nowhere visible.
 
+
 `updateComposerState` now computes `writable = meta.kind === 'sdk'`, and the
 input, the Send button and the Stop button all follow it, joining the permission
 mode control and the totals row which already gated the same way. The placeholder
