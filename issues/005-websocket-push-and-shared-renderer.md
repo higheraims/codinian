@@ -16,6 +16,7 @@ polls `/api/sessions` every 5 seconds and `/api/sessions/{id}/output` every 2. P
 HTML snapshot of a VTE buffer cannot express a tool card or an approval button, and an
 approval that arrives 2 seconds late is an approval the user is already waiting on.
 
+
 Add a WebSocket endpoint carrying the `TranscriptEvent` stream, plus a message for
 resolving an approval. Then write the transcript renderer once, in HTML and JS under
 `remote/static`, and use it in both places: the browser client and the WebKitGTK pane
