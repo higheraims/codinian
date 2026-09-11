@@ -29,6 +29,7 @@ and the Send button whenever the session status was `working` or
 `awaiting_approval`, and set the placeholder to "waiting...". Both clients load
 the same `app.js`, which is why the pane and the browser behaved identically.
 
+
 Nothing underneath needed the box closed. `SdkSession._sends` is an
 `asyncio.Queue` drained by `_run` between turns, and the CLI queues on its own
 side as well: the JSONL for the issue-24 session carries `queue-operation`
