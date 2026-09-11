@@ -18,6 +18,7 @@ pending. It may have been answered from another client, or the session may have
 restarted." None of those was what happened. The request had been dead for
 minutes, and nothing on screen said so.
 
+
 The original report, verbatim:
 
 > There's a timeout at all on a question whose answer comes from a human.
