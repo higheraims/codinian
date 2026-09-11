@@ -15,6 +15,7 @@ Skills and slash commands are discoverable in the CLI by typing `/` and reading 
 In a GUI that affordance has to be built, or the features are invisible: a user has to
 already know a skill exists to invoke it.
 
+
 List the skills and slash commands available to a session, with their descriptions, and let
 one be invoked from the interface. Show in the transcript when a skill loads, so the reason
 the model changed approach mid-turn is visible rather than mysterious.
