@@ -14,6 +14,7 @@ related: [ISSUE-007, ISSUE-019, ISSUE-029]
 Give the app a Settings area reached from the bottom of the sidebar, and move
 Remote Access into it as one tab.
 
+
 Anchored to the bottom of the left panel: the program name, the version, and a
 cogwheel. Clicking the cogwheel highlights that group the way a project or
 session row highlights, puts "Settings" in the content header where a project
