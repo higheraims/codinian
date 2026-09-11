@@ -14,6 +14,7 @@ related: [ISSUE-003, ISSUE-004, ISSUE-009, ISSUE-011]
 Two unknowns gate the whole pivot described in [../pivot-plan.md](../pivot-plan.md).
 Settle both before any UI work, because either one can change the architecture.
 
+
 1. **Auth.** Does `claude-agent-sdk`, installed in a venv, authenticate against the
    existing Claude subscription login, or does it demand an API key? If it demands a key,
    the account and billing story for this app changes, and so does what we can ship.
