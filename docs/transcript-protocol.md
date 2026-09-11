@@ -430,6 +430,13 @@ inside it (`project-workspace-protocol.md`).
   text stays put and the client says the connection is down. An approval or an
   answer that fails the same way hands its card back rather than leaving it
   dimmed and looking settled.
+- `?session=<id>` opens that session. In the desktop pane, alongside `embed=1`,
+  it is what the pane is pinned to; in the full UI it is a deep link, which is
+  what a project's Running-now card and History's Resume hand out. Applied when
+  the first session list arrives, since selecting a session subscribes, and once
+  only, because that list arrives again on every status and cost change. An id
+  that is not in the list gets a note saying the session is no longer running
+  rather than a page that silently selected nothing.
 - Theme-aware (light and dark), responsive, no external network dependencies:
   the same bundle loads inside WebKitGTK and in a plain browser.
 - `?theme=light` or `?theme=dark` on the page URL forces a palette; with no such

@@ -212,9 +212,14 @@
   // same bundle with ?embed=1&session=<id> and wants sidebar-free chrome
   // pinned to one session, subscribed immediately on connect rather than
   // waiting for a sidebar click (there is no sidebar to click).
+  //
+  // `session` is read in both modes. In the pane it pins what this page is
+  // for; in the full UI it is a deep link, which is what a project's
+  // Running-now card and History's Resume both hand out. Reading it only in
+  // the pane meant those links opened the app with nothing selected.
   const queryParams = new URLSearchParams(location.search);
   const embedMode = queryParams.get('embed') === '1';
-  const embedSessionId = queryParams.get('session');
+  const urlSessionId = queryParams.get('session');
   if (embedMode) appEl.classList.add('embed-mode');
 
   // Reading a stored conversation rather than driving a live one (ISSUE-015).
@@ -404,9 +409,9 @@
 
     // A subscription lives on the connection, so a reconnect starts the backend
     // with an empty set and the open session stops receiving events until it is
-    // re-sent. The pinned id is `embedSessionId` in the pane and `currentId` in
+    // re-sent. The pinned id is `urlSessionId` in the pane and `currentId` in
     // the full UI; either way, resubscribe to whatever this client was watching.
-    const watching = embedMode ? embedSessionId : state.currentId;
+    const watching = embedMode ? urlSessionId : state.currentId;
     if (!watching) return;
     if (state.currentId === watching) {
       // Already "selected" locally from before the drop, so selectSession()
@@ -647,6 +652,28 @@
       renderPaneHeader();
       updateComposerState();
     }
+    openDeepLink();
+  }
+
+  // Acted on when the first session list arrives, not at boot: selecting a
+  // session subscribes, and there is nothing to subscribe through until the
+  // socket is up and nothing to select until the session is known to be there.
+  let deepLinkPending = !embedMode && !!urlSessionId;
+
+  function openDeepLink() {
+    if (!deepLinkPending) return;
+    // Once. This list arrives again on every status and cost change, and a
+    // second application would pull the user off whatever they had opened
+    // since, mid-read.
+    deepLinkPending = false;
+    if (state.sessionsMeta.has(urlSessionId)) {
+      selectSession(urlSessionId);
+      return;
+    }
+    // A link outlives the session it names: a card followed after the session
+    // was closed, or after a restart dropped the ones it was holding.
+    showAlert('That session is no longer running.',
+              'It can be resumed from History, or from the project it ran in.');
   }
 
   function applySnapshot(msg) {
