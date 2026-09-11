@@ -26,6 +26,7 @@ Display a qr code for the remote url so a user can scan on their phone and walk 
 
 The code is in the Remote Access dialog, under the two links.
 
+
 Which link it encodes is the part worth explaining, and it is not the first one
 in the dialog. `http://127.0.0.1:8787` resolves to the phone itself and reaches
 nothing, so `_phone_url` picks in this order: the tailnet link when `tailscale
