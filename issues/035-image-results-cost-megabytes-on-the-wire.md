@@ -18,6 +18,7 @@ through verbatim: `sdk_session.py` copies `block.content` into the event,
 session, the WebSocket broadcasts it, and a reconnecting client is sent the
 whole backlog again. `claude_history.py` does the same on replay.
 
+
 Measured on one real session (15 screenshots read during a UI review):
 
     GET /api/history/<sdk-id>  ->  2,647,253 bytes
