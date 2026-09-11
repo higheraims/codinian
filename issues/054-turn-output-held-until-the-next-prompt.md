@@ -14,6 +14,7 @@ related: [ISSUE-036, ISSUE-053]
 Reported as chat that arrives out of order, and narrowed down over several
 rounds. The detail that identified it:
 
+
 > the session seems to be awaiting input, but as soon as I give a prompt, some
 > other stuff appears below the prompt instantly, which seems like an instant
 > response but also seems more relevant to the previous turn.
