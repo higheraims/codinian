@@ -20,6 +20,7 @@ Integrate artwork into the software interface
 - go back the original startup state in early code version where on startup, nothing is selected and the main content pane shows the program icon and a prompt to select - in this case we'll expand it to say "Welcome to Codinian [line break and vertical space] Select Project or Sesssion"
 - use icon in web view as well (replaces square with terminal greater-than symbol)
 
+
 - **2026-08-20, done, and one of the four bullets turned out to be a bug.**
   The startup state had not been changed on purpose. A `Gtk.ListBox` in SINGLE
   selection mode selects its first row as soon as focus reaches it, and the
