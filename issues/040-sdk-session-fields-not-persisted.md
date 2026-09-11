@@ -18,6 +18,7 @@ today: `load_sessions` is only used to read session ids for stale-notification
 withdrawal, never to repopulate the `SessionManager` at startup, which is
 deliberate (sessions live in memory only).
 
+
 It is filed as a landmine. If session restore is ever wired up, `load_sessions`
 would hand back every restored SDK session as `kind="terminal"` (the dataclass
 default), and `add_session` would spawn a VTE terminal plus a raw `claude`
