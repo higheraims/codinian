@@ -15,6 +15,7 @@ Asked whether there is a way to redirect a session that looks stuck without
 hitting Stop: an agent waiting on a shell command that may have hung, where the
 thing wanted is a word with the agent rather than the end of its turn.
 
+
 There is, and Codinian was the only thing preventing it. The CLI keeps a command
 queue. A user message written to it while a turn is running is absorbed by that
 turn at the next step of the agent loop, so the model reads it without the turn
