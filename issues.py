@@ -378,8 +378,16 @@ def update_issue(
         return None
 
     fm = dict(frontmatter)
-    fm["id"] = existing["frontmatter"]["id"]
-    fm["created"] = existing["frontmatter"]["created"]
+    # id and created come from the file regardless of what the caller sent. A
+    # file carrying neither -- hand-written, or written before the format
+    # settled -- keeps carrying neither, rather than gaining a null id or a
+    # created date it never had. Reading them straight out of the dict raised
+    # KeyError on such a file, which reached the API as a 500.
+    for key in ("id", "created"):
+        if key in existing["frontmatter"]:
+            fm[key] = existing["frontmatter"][key]
+        else:
+            fm.pop(key, None)
     fm["updated"] = datetime.date.today()
 
     preamble = existing.get("preamble", "")
