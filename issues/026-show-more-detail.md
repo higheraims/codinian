@@ -13,6 +13,7 @@ related: [ISSUE-025, ISSUE-027, ISSUE-028]
 
 Session window does not show much detail from the chat
 
+
 It just shows "Thinking", any approvals, and the occasional mention of "now this action..." but not much description of what's going on
 
 ## Acceptance / done-when
