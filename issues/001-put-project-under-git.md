@@ -22,6 +22,7 @@ undo a bad edit across files, and no `git log` to date the work these issues des
 
 - `git init` in the project root, with a `.gitignore` covering `__pycache__/`, `*.pyc`,
   `.venv/`, and any local SQLite copies.
+
 - One initial commit of the current tree, including `docs/issues/`.
 - `~/.local/share/codinian/codinian.db` stays out of the repo; it is user data, not source.
 
