@@ -15,6 +15,7 @@ Sessions run in Codinian are far less talkative than the same work run in a
 terminal. The transcript reads as a list of tool calls with almost nothing
 between them.
 
+
 The cause is that Codinian sets no system prompt, which the SDK turns into an
 empty one rather than leaving it alone. Fixing it means deciding what else about
 a session should be configurable, so this issue also adds a Claude tab to
