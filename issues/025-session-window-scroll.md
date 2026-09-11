@@ -34,6 +34,7 @@ entries to nothing. Scrolling only began once everything shrinkable had already
 been crushed, which is why it started "not until the view is impossibly
 cramped".
 
+
 Measured in headless Chromium against the page itself, 20 tool cards and 20
 resolved approval lines in one transcript: the tool cards rendered 2px tall,
 while the resolved lines held 36px because `.approval-resolved-line` sets no
