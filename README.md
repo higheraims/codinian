@@ -11,7 +11,7 @@ It is built on the [Claude Agent SDK](https://github.com/anthropics/claude-agent
 so it drives your existing local Claude Code installation rather than talking to
 the Anthropic API directly.
 
-> **Status: 0.1.** Linux-only, no packaged install yet, and no automated test
+> **Status: alpha.** Linux-only, no packaged install yet, and no automated test
 > suite. It runs and is used daily, but expect rough edges. Known gaps are
 > tracked in [`issues/`](issues/); the open ones are worth reading before you
 > rely on it.

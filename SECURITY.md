@@ -11,7 +11,7 @@ Please report privately rather than opening a public issue. Use GitHub's
 on this repository (the **Security** tab, "Report a vulnerability"). Include what
 you did, what happened, and how to reproduce it.
 
-Expect an acknowledgement within a week. This is a small 0.1 project maintained
+Expect an acknowledgement within a week. This is a small alpha project maintained
 in spare time, so please allow time for a fix before disclosing publicly.
 
 ## What is in scope

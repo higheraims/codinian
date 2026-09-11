@@ -20,8 +20,8 @@ dependencies = ["aiohttp>=3.12.14", "claude-agent-sdk", "qrcode"]
 Homepage = "https://github.com/higheraims/codinian"
 Issues = "https://github.com/higheraims/codinian/issues"
 
-# Read from __init__.py, so the sidebar's "Codinian 0.1.0" and the package
-# agree and there is one place to bump (ISSUE-030).
+# Read from version.py, so the sidebar's "Codinian" and version number agree
+# with the package and there is one place to bump (ISSUE-030).
 [tool.setuptools.dynamic]
 version = {attr = "version.__version__"}
 
