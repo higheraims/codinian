@@ -17,6 +17,7 @@ enough to recognize a session you remember and useless for finding one you do no
 back a search across every past session: find the conversation where a file was edited, or
 where a particular error appeared, and read it without resuming it.
 
+
 Backlog item from the M4 list. Reading a past transcript is a separate act from continuing
 it, and conflating the two is why the resume picker is a poor search tool.
 
