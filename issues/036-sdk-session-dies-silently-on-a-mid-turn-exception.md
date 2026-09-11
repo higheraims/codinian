@@ -17,6 +17,7 @@ recreated. If anything in the turn loop raises -- `_handle_message`,
 to the `claude` subprocess -- the outer `except Exception` emits one `error`
 event, sets status `ERROR`, and the task returns. Nothing restarts it.
 
+
 `send()` does not know the loop is gone. It still emits the user's text into the
 transcript and pushes onto `self._sends`, which is now a queue with no consumer.
 The message appears sent and is lost. The WebSocket `send` path
