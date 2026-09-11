@@ -32,6 +32,7 @@ Built in M4. A project is a folder registered in
 whose rows open that same page in a WebKitGTK pane, exactly as a session row
 opens the transcript.
 
+
 Everything this issue listed is there: browse and add by folder, files and
 sessions in one place, `git init`, a `.gitignore` editor, commits and tags,
 create and rename files, and opening a file in an external program.
