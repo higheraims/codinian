@@ -13,6 +13,7 @@ related: [ISSUE-005, ISSUE-012]
 
 Two rendering cases the generic tool card handles badly.
 
+
 `ExitPlanMode` carries a plan the user is meant to read and accept or reject. Rendered as a
 JSON blob in a tool card it is unreadable; it should render as the document it is, with
 accept and reject as the approval buttons.
