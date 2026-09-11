@@ -15,6 +15,7 @@ A planning session put an approval card in front of every `cat`, `grep`, `sed`
 and `ls`. Dozens of them in one session, all read-only, none worth a decision.
 The session was reported as "almost unusable".
 
+
 Codinian gates tool calls through a PreToolUse hook rather than `can_use_tool`,
 deliberately, so the hook fires even where the CLI's own allow rules would
 auto-approve. `MODE_DECIDES_ITSELF` listed only `auto` and `dontAsk`, so in
