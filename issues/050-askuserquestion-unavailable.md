@@ -16,6 +16,7 @@ was absent from every session, so a model that wanted to offer three options had
 to guess one instead, or write the question as prose nobody could answer
 structurally.
 
+
 The cause was one missing option. The CLI registers AskUserQuestion only when
 the client supplies a `can_use_tool` callback, and this app gates on a PreToolUse
 hook and passed no callback. Measured as a 2x2 against the bundled CLI:
