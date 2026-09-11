@@ -16,6 +16,7 @@ It maps SDK messages to the `TranscriptEvent`s from [[ISSUE-003]] and pushes the
 manager. Sending a message is `client.query(text)`, replacing the "type into the terminal"
 injection path for `sdk` sessions.
 
+
 `canUseTool` is the piece that earns the pivot. When it fires, the driver creates an
 `approval_request` event plus a pending future keyed by `tool_use_id`, broadcasts the
 event, and awaits resolution from any attached client. The callback blocks the session
