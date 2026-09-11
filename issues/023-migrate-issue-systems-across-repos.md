@@ -14,6 +14,7 @@ related: [ISSUE-019]
 Split out of [[ISSUE-019]], which named this as a separate step to take once the
 in-app issues system existed. It now does, so this is the remaining work.
 
+
 The tracker started in another of the author's repos and was copied by hand into each repo that
 wanted it. Every copy drifted: file naming, which frontmatter fields exist and
 what they are called, and where the folder sits relative to the repo root all
