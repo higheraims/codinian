@@ -40,6 +40,7 @@ per-repo configuration, `issues.py` for the file format, the `/api/projects/…
 /issues` routes for access, and the Issues tab of `project.html` for the
 interface.
 
+
 The parts that landed as asked: per-repo, in-repo, no FrontMatter dependency,
 repo-specific `statuses`/`types`/`areas` that the client builds its filter chips
 and dropdowns from rather than hard-coding, a filterable and sortable list,
