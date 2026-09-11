@@ -26,6 +26,7 @@ Auto mode switch (trying to deal with inability to see approvals as a result of 
 
 The switch worked. Everything downstream of it ignored the result.
 
+
 `set_permission_mode` reached the CLI, the session metadata updated, and the
 transcript printed "Permission mode changed to Auto" -- the second screenshot
 shows it, followed by four more Bash approvals. The reason is the choice made
