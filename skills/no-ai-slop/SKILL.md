@@ -7,12 +7,30 @@ description: "Rules and worked examples for writing prose that does not read lik
 
 Derived from Louis Rossmann's [no_ai_slop_writing_rules](https://github.com/realrossmanngroup/no_ai_slop_writing_rules); the rule numbers below refer to that list. This skill turns the rules that have worked examples into actionable guidance: each shows a WRONG version (the slop) and a RIGHT version (the fix). The pattern behind every fix is the same: replace the vague claim with a specific, checkable fact. The banned-word and pattern lists are in `references/ai-writing-detection.md`.
 
-## Rule 1: No emdashes
+## Rule 1: No em dashes
 
-The character is banned. Use a semicolon, a period, a comma, or restructure.
+The em dash `—` (U+2014) is banned in prose, and so is an en dash `–` (U+2013) used the same
+way, as a parenthetical or sentence-level break. Use a comma, a semicolon, a period,
+parentheses, or restructure the sentence.
 
-- WRONG: "The policy -- which affected millions -- was later reversed."
+This is a tell, not a matter of taste. Nobody types `—` on a keyboard, so its
+presence is one of the clearest markers of machine-written text.
+
+**A plain hyphen `-` is what a human types, and it is fine**, including as a separator
+("Fedora 44 - KDE", "run the check - it takes a second"). Do not avoid the hyphen key trying
+to comply with this rule; that overcorrection is what this section exists to prevent.
+
+- WRONG: "The policy — which affected millions — was later reversed."
 - RIGHT: "The policy affected millions of devices. The company reversed it in December 2017."
+
+An en dash inside a numeric range ("1941–2026", "pp. 118–119") is ordinary typography rather
+than slop. Leave it, and follow whatever the surrounding project already does.
+
+**Do not swap in a colon mechanically.** A colon is syntax in structured text, not just
+punctuation. Rewriting `title — scope fixed by measurement` as `title: scope fixed by
+measurement` inside YAML frontmatter produced `mapping values are not allowed here`, and the
+file silently vanished from the tool that read it. Look at what the line *is* before picking
+the replacement, and quote the value if the format needs it.
 
 ## Rule 4: No intensifiers
 
@@ -93,7 +111,7 @@ Whenever you say A differs from B, name the part, the version, the date, the mec
 
 Run this pass on every piece of prose before you hand it back. The full banned lists are in `references/ai-writing-detection.md`; check against them directly.
 
-1. Search for the emdash character. Remove every one (Rule 1).
+1. Search for the em dash `—` and for an en dash `–` used as a prose break; remove every one (Rule 1). Leave plain hyphens and numeric-range en dashes alone.
 2. Scan for banned verbs (delve, leverage, utilize, foster, bolster, underscore, unveil, streamline) and replace with plain equivalents.
 3. Scan for banned adjectives and intensifiers (robust, comprehensive, pivotal, seamless, significantly, extremely, truly) and cut or replace.
 4. Scan for banned transitions and openers (Furthermore, Moreover, That being said, In today's world, It's worth noting that).
