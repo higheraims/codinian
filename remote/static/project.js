@@ -1690,7 +1690,18 @@
       box.appendChild(h('div', { class: 'empty-note' }, 'No sessions running in this project.'));
     }
     for (const s of state.sessions) {
-      const card = h('a', { class: 'session-card', href: `/?session=${encodeURIComponent(s.id)}` });
+      // A link in the browser, where following it opens that session's
+      // transcript. Not in the desktop pane: navigating there would replace
+      // the project with the full sidebar-and-topbar UI inside a page that has
+      // no way back out, and the session is in the GTK sidebar already. Same
+      // reason resuming and starting do not leave either (see startSession).
+      const card = embedMode
+        ? h('div', { class: 'session-card is-embed' })
+        : h('a', { class: 'session-card', href: `/?session=${encodeURIComponent(s.id)}` });
+      if (embedMode) {
+        card.addEventListener('click', () => notify(
+          `"${s.name || s.id}" is open in the sidebar.`, 'info'));
+      }
       // The directory earns a line only when it is not the project root, the
       // same rule a history card follows. The status is on the stats line
       // already, so there is nothing else to put here.

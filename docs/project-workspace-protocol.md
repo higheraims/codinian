@@ -315,13 +315,13 @@ Tabs:
   the folder is not a repo. Commit is disabled with an explanation when
   `git.user` is null.
 - **Sessions**: two lists. *Running now* is the project's live sessions with
-  status and cost, each linking to `/?session=<id>` for the transcript.
-  *Earlier conversations* is `history`, every `claude` session ever run in the
-  folder, each with a Resume button that POSTs to the sessions route. In a
-  browser, Resume then opens the new session's transcript. In the desktop pane
-  (`embed=1`) it does not navigate: the pane has no way back to the project, and
-  the sidebar has the new session anyway, so it says where the session went and
-  refreshes the tab instead.
+  status and cost. *Earlier conversations* is `history`, every `claude` session
+  ever run in the folder, each with a Resume button that POSTs to the sessions
+  route. In a browser a running card is a link to `/?session=<id>`, and Resume
+  opens the session it started. In the desktop pane (`embed=1`) neither
+  navigates: the pane has no way back to the project, and the GTK sidebar has
+  the session anyway, so a card says where to find it and Resume says where the
+  session went and refreshes the tab.
 
 ## Sessions and projects
 

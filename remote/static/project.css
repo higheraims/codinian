@@ -636,6 +636,10 @@
   color: inherit;
 }
 .session-card:hover { background: var(--surface-2); }
+/* In the desktop pane the card is a div rather than a link, because following
+   it would strand the pane (see renderSessionsTab). It still answers a click,
+   so it still says so. */
+.session-card.is-embed { cursor: pointer; }
 .session-card-main { flex: 1; min-width: 0; }
 .session-card-name { font-weight: 600; font-size: .9rem; }
 .session-card-sub { font-size: .78rem; color: var(--text-muted); margin-top: .15rem; }
