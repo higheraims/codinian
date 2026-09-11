@@ -11,7 +11,7 @@ jobs:
     name: versions agree
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Check
         run: |
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
@@ -28,11 +28,11 @@ jobs:
       - name: Build tooling
         run: |
           dnf -y install --setopt=install_weak_deps=False \
-            rpm-build rpmdevtools rpmlint dnf-plugins-core git-core \
+            rpm-build rpmdevtools rpmlint dnf-plugins-core git-core make \
             python3-devel python3-pip python3-setuptools \
             desktop-file-utils libappstream-glib
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The checkout is owned by a different uid than the one dnf left behind,
       # and .copr/Makefile runs git archive.
@@ -42,11 +42,28 @@ jobs:
       # Not in Fedora, so Codinian's COPR carries it and this job builds it the
       # same way: from the PyPI sdist, which unlike the wheel contains no
       # bundled claude binary.
+      #
+      # The spec uses %pyproject_buildrequires, so some of its build
+      # dependencies (hatchling, for one) are only named while the build is
+      # running, and builddep on the source package cannot see them. rpmbuild
+      # reports that as exit 11 and writes a buildreqs.nosrc.rpm listing what it
+      # wanted. Mock, and so COPR, installs those and goes round again; outside
+      # mock that loop has to be written out. Each pass can uncover another
+      # layer, hence the retries rather than a single extra attempt.
       - name: Build python3-claude-agent-sdk
         run: |
           OUTDIR="$PWD" packaging/copr/build-sdk-srpm.sh
-          dnf -y builddep ./python-claude-agent-sdk-*.src.rpm
-          rpmbuild --rebuild ./python-claude-agent-sdk-*.src.rpm
+          srpm=$(echo ./python-claude-agent-sdk-*.src.rpm)
+          dnf -y builddep "$srpm"
+          for _ in 1 2 3 4; do
+            rc=0
+            rpmbuild --rebuild "$srpm" || rc=$?
+            [ "$rc" -eq 11 ] || exit "$rc"
+            dnf -y builddep \
+              ~/rpmbuild/SRPMS/python-claude-agent-sdk-*.buildreqs.nosrc.rpm
+          done
+          echo "build dependencies still unresolved after 4 passes" >&2
+          exit 1
 
       - name: Build codinian
         run: |
@@ -77,7 +94,7 @@ jobs:
           # display, and a container has none.
           python3 -c "import codinian, codinian.issues, codinian.remote.server; print(codinian.__version__)"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: rpms
           path: ~/rpmbuild/RPMS/noarch/*.rpm
@@ -99,12 +116,17 @@ jobs:
             pybuild-plugin-pyproject desktop-file-utils build-essential \
             ca-certificates git
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
+      # dpkg-buildpackage writes its output to the parent of the source tree,
+      # which is outside the workspace, and upload-artifact refuses any path
+      # containing "..". So the packages are moved back in here.
       - name: Build
         run: |
           cp -r packaging/debian debian
           dpkg-buildpackage -us -uc -b
+          mkdir -p dist
+          mv ../*.deb dist/
 
       # aiohttp carries the remote server and is floored at the release that
       # fixed CVE-2025-53643. No Debian or Ubuntu release currently ships a
@@ -125,9 +147,9 @@ jobs:
       # known request-smuggling hole. The build above is the part that must pass.
       - name: Install check
         continue-on-error: true
-        run: apt-get install -y ../codinian_*.deb
+        run: apt-get install -y ./dist/codinian_*.deb
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: deb-${{ strategy.job-index }}
-          path: ../*.deb
+          path: dist/*.deb
