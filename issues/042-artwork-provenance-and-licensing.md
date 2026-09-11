@@ -23,6 +23,7 @@ treated as settled.
 
 - Every visual element in the mark is either original work or carries a license
   compatible with redistribution under GPL-3.0, recorded in the repo.
+
 - The olive branch is redrawn or re-sourced.
 - `docs/art/` notes the provenance and license of the final mark.
 
