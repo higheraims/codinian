@@ -81,6 +81,37 @@ def _app_mark() -> Gdk.Texture | None:
     return texture
 
 
+# A list row reserves 50px of height whether it carries one line of text or
+# two, which is most of a row wasted on the single-line rows in the sidebar.
+# Relaxing that floor and padding the row to fit its own contents takes those
+# rows to 44px without touching the size of anything inside them. Rows with a
+# subtitle are left alone: their two lines already fill the 50px, so the same
+# rule would only pad them taller. Scoped to a class of ours rather than to
+# `row`, so every other list in the app keeps the platform metrics.
+_COMPACT_ROW_CSS = """
+row.codinian-compact > box.header {
+  min-height: 0;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+"""
+
+_css_installed = False
+
+
+def _install_sidebar_css() -> None:
+    """Add the compact-row rules to the display, once per process."""
+    global _css_installed
+    display = Gdk.Display.get_default()
+    if _css_installed or display is None:
+        return
+    provider = Gtk.CssProvider()
+    provider.load_from_string(_COMPACT_ROW_CSS)
+    Gtk.StyleContext.add_provider_for_display(
+        display, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+    _css_installed = True
+
+
 def _short_path(path: str) -> str:
     """A working directory as a sidebar line: the home directory as `~`."""
     home = str(Path.home())
@@ -220,6 +251,7 @@ class CodinianWindow(Adw.ApplicationWindow):
         self.set_content(self._toasts)
 
     def _build_sidebar(self) -> Adw.NavigationPage:
+        _install_sidebar_css()
         toolbar = Adw.ToolbarView()
 
         header = Adw.HeaderBar()
@@ -271,19 +303,25 @@ class CodinianWindow(Adw.ApplicationWindow):
 
         self._history_row = Adw.ActionRow(
             title="History",
-            subtitle="Search past conversations",
             activatable=True,
+            tooltip_text="Search past conversations",
         )
+        self._history_row.add_css_class("codinian-compact")
         self._history_row.add_prefix(Gtk.Image(icon_name="edit-find-symbolic"))
         self._history_row._nav = "history"
         self._settings_list.append(self._history_row)
 
         self._settings_row = Adw.ActionRow(
             title="Codinian",
-            subtitle=__version__,
             activatable=True,
             tooltip_text="Settings",
         )
+        # The version beside the cogwheel rather than beneath the name: it is
+        # two words' worth of text and does not need a line of its own.
+        self._settings_row.add_css_class("codinian-compact")
+        version = Gtk.Label(label=__version__, valign=Gtk.Align.CENTER)
+        version.add_css_class("dim-label")
+        self._settings_row.add_suffix(version)
         self._settings_row.add_suffix(
             Gtk.Image(icon_name="emblem-system-symbolic", valign=Gtk.Align.CENTER)
         )
@@ -392,7 +430,10 @@ class CodinianWindow(Adw.ApplicationWindow):
         row = Adw.ActionRow(activatable=True)
         row.set_use_markup(False)
         row.set_title(session.name)
+        row.set_title_lines(1)
         row.set_subtitle(self._session_subtitle(session))
+        row.set_subtitle_lines(1)
+        row.set_tooltip_text(session.name)
         row.add_prefix(dot)
 
         # The same menu a project row carries, for the same reason: there is
@@ -908,13 +949,22 @@ class CodinianWindow(Adw.ApplicationWindow):
         pid = meta["id"]
         self._project_meta[pid] = meta
 
-        row = Adw.ActionRow(
-            title=meta["name"],
-            subtitle=meta["path"] if meta["exists"] else f"Missing — {meta['path']}",
-            activatable=True,
-        )
+        # One line per project, with the path in the tooltip rather than under
+        # the name. Projects tend to sit side by side in one parent directory,
+        # so the second line spent most of its width repeating that parent, and
+        # the longer names wrapped it onto a third line. A directory that has
+        # gone missing still gets a second line, since that is the one thing
+        # the name cannot say.
+        row = Adw.ActionRow(activatable=True, tooltip_text=_short_path(meta["path"]))
+        row.set_use_markup(False)
+        row.set_title(meta["name"])
+        row.set_title_lines(1)
         row.add_prefix(Gtk.Image(icon_name="folder-symbolic"))
-        if not meta["exists"]:
+        if meta["exists"]:
+            row.add_css_class("codinian-compact")
+        else:
+            row.set_subtitle("Missing")
+            row.set_subtitle_lines(1)
             row.add_css_class("dim-label")
 
         menu_btn = Gtk.MenuButton(icon_name="view-more-symbolic", valign=Gtk.Align.CENTER)
