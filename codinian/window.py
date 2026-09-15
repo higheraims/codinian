@@ -1077,7 +1077,7 @@ class CodinianWindow(Adw.ApplicationWindow):
     # ---------------------------------------------------------------- signals
 
     def _on_new_clicked(self, _btn):
-        from session_dialog import NewSessionDialog
+        from .session_dialog import NewSessionDialog
         dlg = NewSessionDialog(self)
         dlg.connect("session-ready", self._on_session_ready)
         dlg.present(self)
@@ -1095,7 +1095,7 @@ class CodinianWindow(Adw.ApplicationWindow):
         that most runs never open, and constructing it reaches out to
         `tailscale serve status`."""
         if self._settings_view is None:
-            from settings_view import SettingsView
+            from .settings_view import SettingsView
             self._settings_view = SettingsView(self._config)
             self._settings_view.connect("toast", self._on_settings_toast)
             self._settings_view.connect("token-rotated", self._on_token_rotated)
@@ -1163,7 +1163,7 @@ class CodinianWindow(Adw.ApplicationWindow):
             self._history_webview.load_uri(self._history_pane_url())
 
     def _on_resume_clicked(self, _btn):
-        from resume_dialog import ResumeSessionDialog
+        from .resume_dialog import ResumeSessionDialog
         dlg = ResumeSessionDialog(self, self._config)
         dlg.connect("session-ready", self._on_session_ready)
         dlg.present(self)
@@ -1314,7 +1314,7 @@ class CodinianWindow(Adw.ApplicationWindow):
         # off (ISSUE-030). Deliberately after the withdrawal above: a
         # notification sent while they were on should still be cleared once it
         # stops being true.
-        from settings_view import notifications_enabled
+        from .settings_view import notifications_enabled
         if not notifications_enabled(self._config):
             return
 

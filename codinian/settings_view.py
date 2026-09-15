@@ -435,7 +435,7 @@ class SettingsView(Gtk.Box):
 
     def __init__(self, config: dict):
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
-        from remote_panel import RemoteAccessPage
+        from .remote_panel import RemoteAccessPage
 
         self._stack = Adw.ViewStack()
 
