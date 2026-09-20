@@ -1289,6 +1289,16 @@
   composerInput.addEventListener('blur', () => setTimeout(closePalette, 150));
   composerInput.addEventListener('input', growComposer);
 
+  // Whether the only keyboard here is drawn on the screen. A soft keyboard has
+  // no Shift to hold, so it has no Shift+Enter.
+  //
+  // Asked each time rather than read once, because a tablet gains and loses a
+  // pointer as its keyboard is attached and detached, and the answer has to
+  // follow it.
+  function softKeyboardOnly() {
+    return window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+  }
+
   // Enter sends; Shift+Enter breaks the line. A textarea does the opposite by
   // default, and a prompt long enough to need paragraphs is exactly the one
   // worth laying out before sending it. The palette has a prior claim on Enter
@@ -1296,9 +1306,17 @@
   // first, so this one stands aside for it. Only when the palette has
   // something to complete, though: open on "no matches" it takes no keys, and
   // Enter there means send the line as typed.
+  //
+  // On a touch device the two swap over. With no Shift+Enter to reach for,
+  // Enter as the send key leaves a paragraph no way to be typed at all, so
+  // there Enter breaks the line and the Send button sends -- it is on screen
+  // either way, which is what makes that the safe half to give up. Ctrl or Cmd
+  // with Enter sends everywhere, so a tablet with a real keyboard attached is
+  // not left reaching for the button.
   composerInput.addEventListener('keydown', (e) => {
-    if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+    if (e.key !== 'Enter' || e.isComposing) return;
     if (paletteOpen() && paletteRows().length) return;
+    if (!(e.ctrlKey || e.metaKey) && (e.shiftKey || softKeyboardOnly())) return;
     e.preventDefault();
     composerForm.requestSubmit();
   });

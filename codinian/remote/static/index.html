@@ -98,8 +98,10 @@
 
       <form id="composer">
         <!-- A textarea, not an input: a prompt worth writing carefully is
-             worth writing in paragraphs. Enter sends, Shift+Enter breaks the
-             line, and the box grows with what is in it (see app.js). -->
+             worth writing in paragraphs. Enter sends and Shift+Enter breaks the
+             line, except on a touch device, where there is no Shift to hold and
+             the two swap over. Ctrl/Cmd+Enter sends either way, and the box
+             grows with what is in it (see app.js). -->
         <textarea id="composer-input" rows="1" placeholder="Select a session to send a message&hellip;" autocomplete="off" disabled></textarea>
         <button id="composer-stop" class="composer-stop" type="button" hidden>Stop</button>
         <button id="composer-send" type="submit" disabled>Send</button>
