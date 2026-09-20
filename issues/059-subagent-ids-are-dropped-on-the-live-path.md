@@ -40,14 +40,18 @@ The CLI's `mapToolResultToToolResultBlockParam` has branches for
 throws on anything else -- there is no killed or failed branch to carry an id.
 
 So an async agent's id arrives at launch and is held from then on, but a
-synchronous subagent cut off by a limit still leaves nothing to send to. Its
-transcript is on disk regardless, under
+synchronous subagent cut off by a limit leaves no result to carry one.
 
-    ~/.claude/projects/<project>/<session>/subagents/agent-<id>.jsonl
+It does leave records. Beside each subagent transcript the CLI writes an
+`agent-<id>.meta.json`:
 
-which `claude_history.subagent_dir` already knows how to find. Recovering ids
-by listing that directory, and offering them on ISSUE-058's resume card, is the
-piece still missing.
+    {"agentType": "claude", "description": "Viewer flicker fix and star
+     toggle", "toolUseId": "toolu_01TzGw...", "spawnDepth": 1, "model": "sonnet"}
+
+That file is the only place an agent id and the `Agent` call that started it
+are put together *before* the call returns, which is what makes it the answer
+here. Measured across 76 of them on this host: `agentType`, `description` and
+`toolUseId` are present on every one, `model` on 55.
 
 ## Acceptance / done-when
 
@@ -65,7 +69,20 @@ result record rather than the entry around it, since the live path has the same
 record under a different name. `sdk_session._handle_block` merges it into the
 `tool_result` event.
 
-The client needed no change: it already branches on `ev.agent_id`, and only
-offers to load a transcript when nothing streamed -- which stays true, because
-a live session streams the subagent's blocks and a replayed one has none of
-them.
+The client needed no change for that: it already branches on `ev.agent_id`, and
+only offers to load a transcript when nothing streamed -- which stays true,
+because a live session streams the subagent's blocks and a replayed one has
+none of them.
+
+Then the stranded case, which the result record cannot reach.
+`claude_history.list_subagents` reads the `agent-<id>.meta.json` records,
+newest first. `SdkSession` keeps `Agent` calls that have not reported back in
+`_open_agents`, and `_report_limit_block` matches those against the records by
+`toolUseId` and puts the survivors on `rate_limit_block` as `subagents`. A call
+with no record on disk is left out: an id is the whole offer, and naming an
+agent without one is an offer that cannot be taken.
+
+The resume card lists them and folds them into what Resume sends, so the
+parent is told the agents are still there rather than re-spawning work already
+half done. The card quotes the composed message rather than describing it --
+one click sends it, so the text is the thing worth reading first.

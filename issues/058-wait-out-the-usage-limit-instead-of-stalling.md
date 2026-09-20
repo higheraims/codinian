@@ -1,7 +1,7 @@
 ---
 id: ISSUE-058
 title: Wait out a usage limit and carry on, instead of leaving the turn stalled
-status: in-progress
+status: done
 type: feature
 area: sdk
 created: 2026-09-20
@@ -78,11 +78,23 @@ nothing until the window reopens. Tests in `tests/test_sdk_session.py`; the card
 checked in headless Chromium against a live pane, both before and after reset,
 with and without a held prompt.
 
-Still open: the sidebar. A blocked session sits in `awaiting_input` and looks
-exactly like an idle one from outside the pane, so with several panes open there
-is nothing saying which is stalled.
+The sidebar is covered too. A blocked turn now lands on its own status,
+`rate_limited`, rather than on `awaiting_input`: it takes input exactly as an
+idle session does and says the opposite thing about why it stopped, which is
+the distinction that was missing. Amber and unpulsed in both sidebars, amber
+being the colour the banner and the card already use; the browser row's dot
+gained a tooltip, because six colours is more than a reader should have to hold
+in their head. The desktop app notifies on it unconditionally, where "finished"
+waits for real work first -- a turn that never ran is worth saying however it
+got there.
 
-Also still open, and the reason subagents are not covered: see ISSUE-059.
+Two guards in `tests/test_session.py` read the static assets and fail if a
+`SessionStatus` has no `.dot-<status>` rule or no `STATUS_LABEL` entry. That is
+not hypothetical: `rate_limited` was briefly painted with nothing at all, and
+the class landing on the element with no rule behind it is silent.
+
+Subagents cut off by the limit are named on the card and folded into what
+Resume sends; see ISSUE-059.
 
 Upstream has an open feature request, anthropics/claude-code#94222, for the
 related subagent case: a subagent killed by a usage limit is resumable via

@@ -8,6 +8,7 @@ session is working, or a cost figure that resets every turn.
 
 from __future__ import annotations
 
+import pathlib
 from datetime import datetime
 
 import pytest
@@ -48,6 +49,32 @@ def test_an_event_flattens_its_data_to_the_top_level():
 
 def test_every_event_type_the_bus_folds_on_is_a_known_type():
     assert {"status", "usage", "text", "tool_use"} <= EVENT_TYPES
+
+
+# ---------------------------------------- the status vocabulary, end to end
+
+_STATIC = pathlib.Path(__file__).resolve().parent.parent / "codinian" / "remote" / "static"
+
+
+def test_every_status_has_a_colour_in_the_browser_sidebar():
+    """A status with no `.dot-<status>` rule gets a transparent dot: the class
+    lands on the element, nothing paints it, and the row silently stops saying
+    anything. Caught exactly that way when `rate_limited` was added."""
+    css = (_STATIC / "styles.css").read_text()
+    missing = [s.value for s in SessionStatus if f".dot-{s.value}" not in css]
+    assert missing == []
+
+
+def test_every_status_has_a_word_in_the_browser_sidebar():
+    """`statusLabel` falls back to the raw value, so a missing entry shows
+    `rate_limited` where the rest of the UI says "limit reached". Read out of
+    the STATUS_LABEL block rather than the whole file, which would pass on the
+    status name appearing anywhere at all."""
+    app_js = (_STATIC / "app.js").read_text()
+    start = app_js.index("const STATUS_LABEL = {")
+    block = app_js[start:app_js.index("};", start)]
+    missing = [s.value for s in SessionStatus if f"{s.value}:" not in block]
+    assert missing == []
 
 
 # -------------------------------------------------------------- the bus

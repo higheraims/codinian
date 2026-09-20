@@ -299,6 +299,46 @@ def subagent_dir(sdk_session_id: str) -> Path | None:
     return directory if directory.is_dir() else None
 
 
+def list_subagents(sdk_session_id: str) -> list[dict]:
+    """Every subagent this session spawned, from the records on disk.
+
+    The CLI writes an `agent-<id>.meta.json` beside each subagent transcript
+    carrying `toolUseId`, `description`, `agentType` and `model`. That file is
+    the only place an agent's id and the `Agent` call that started it are put
+    together *before* the call returns, which is what makes it the answer for a
+    subagent that never returned: the id normally arrives on the tool result,
+    and a subagent a usage limit cut off produces no result (ISSUE-059).
+
+    Newest first, so a caller taking the first match for a tool_use_id gets the
+    most recent attempt at it.
+    """
+    directory = subagent_dir(sdk_session_id)
+    if directory is None:
+        return []
+    found = []
+    for meta_path in directory.glob("agent-*.meta.json"):
+        agent_id = meta_path.name[len("agent-"):-len(".meta.json")]
+        if not _SAFE_AGENT_ID.fullmatch(agent_id):
+            continue
+        try:
+            record = json.loads(meta_path.read_text())
+            mtime = meta_path.stat().st_mtime
+        except (OSError, ValueError):
+            # One unreadable record is not a reason to report none of them.
+            continue
+        if not isinstance(record, dict):
+            continue
+        entry = {"agent_id": agent_id, "tool_use_id": record.get("toolUseId")}
+        for key, field in (("description", "description"),
+                           ("agentType", "agent_type"),
+                           ("model", "model")):
+            if record.get(key):
+                entry[field] = record[key]
+        found.append((mtime, entry))
+    found.sort(key=lambda pair: pair[0], reverse=True)
+    return [entry for _, entry in found]
+
+
 def subagent_path(sdk_session_id: str, agent_id: str) -> Path | None:
     """One subagent's transcript. `agent_id` comes off the parent's tool_result
     and is checked rather than trusted: it lands in a filename, and the id in a

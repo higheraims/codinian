@@ -541,6 +541,9 @@ button { cursor: pointer; }
 .dot-working           { background: var(--green); animation: pulse 1.6s ease-in-out infinite; }
 .dot-awaiting_approval { background: var(--amber); animation: pulse 1.2s ease-in-out infinite; }
 .dot-awaiting_input    { background: var(--blue); }
+/* Stopped, not waiting: amber like the card and the banner, and still rather
+   than pulsing, because nothing is in flight to pulse for (ISSUE-058). */
+.dot-rate_limited      { background: var(--amber); }
 .dot-done              { background: var(--grey); }
 .dot-error             { background: var(--red); }
 
@@ -1370,6 +1373,18 @@ button { cursor: pointer; }
   overflow-wrap: anywhere;
 }
 .limit-block-card.is-resumed { border-style: dashed; }
+/* The subagents the limit cut off (ISSUE-059). The id is set in the code face
+   because it is an identifier the resume message passes through verbatim, and
+   because it is the half of the line a reader checks rather than reads. */
+.limit-block-note { margin-top: .5rem; font-size: .82rem; color: var(--text-muted); }
+.limit-block-agents {
+  margin: .25rem 0 0;
+  padding-left: 1.1rem;
+  font-size: .82rem;
+}
+.limit-block-agents li { margin-top: .15rem; }
+.limit-block-agent-desc { margin-right: .4rem; }
+.limit-block-agent-id { font-family: var(--font-mono); color: var(--text-muted); }
 
 /* Errors that have no card to attach to: a session that failed to start, a
    request the server could not handle. Before this they went to console.warn,

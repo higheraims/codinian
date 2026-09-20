@@ -166,12 +166,19 @@ up to N ignores anything `<= N`. Backlog replay (below) uses it too.
   Render as a banner when `status` is not `allowed`, and as the footer's fallback
   reading when no `plan_usage` has been captured.
 
-- **`rate_limit_block`** `{ rate_limit_type: string|null, resets_at: number, prompt: string|null }`
+- **`rate_limit_block`** `{ rate_limit_type: string|null, resets_at: number, prompt: string|null, subagents: [{ agent_id: string, description: string }] }`
   The turn that just ended stopped on a usage limit rather than on an answer
   (ISSUE-058). Emitted at the end of a turn that saw a `rejected` `rate_limit`
   with a reset time and no overage to fall back on, and produced no assistant
   message under it. `prompt` is the message that was in flight, so a client can
   offer the resume without the user retyping it.
+
+  `subagents` names the `Agent` calls that had not reported back when the limit
+  landed, each with the id that continues it. Empty for a turn that stranded
+  none, and for one whose agents are not on disk yet. The ids are not in the
+  transcript -- an agent id reaches the parent on the `Agent` call's result, and
+  these calls produced none -- so they come from the CLI's own records beside
+  the subagent transcripts (ISSUE-059).
 
   Distinct from `rate_limit` because that event is a reading and this one is an
   outcome: a `rejected` reading also arrives on a session that is merely sitting
@@ -211,7 +218,8 @@ answers.
 
 Derived from events, not from output timing:
 
-`initializing` · `working` · `awaiting_approval` · `awaiting_input` · `done` · `error`
+`initializing` · `working` · `awaiting_approval` · `awaiting_input` ·
+`rate_limited` · `done` · `error`
 
 - `working`: a turn is in flight (text/tool activity).
 - `awaiting_approval`: at least one `approval_request` or `question_request` is
@@ -223,6 +231,11 @@ Derived from events, not from output timing:
   limit or a task notification can land on a genuinely idle session, and a
   status that went to `working` on one of those would have nothing to bring it
   back.
+- `rate_limited`: the last turn stopped on a usage limit rather than on an
+  answer, and a `rate_limit_block` says which window and when it reopens. Takes
+  input exactly as `awaiting_input` does -- it is not terminal and not busy --
+  but means the opposite thing, which is why it is not folded into it: a stopped
+  session and an idle one looked identical from the sidebar.
 - `done`: the SDK session ended.
 - `error`: a `system`/error or a failed turn.
 

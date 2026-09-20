@@ -244,7 +244,8 @@ def test_a_blocked_turn_reports_the_window_and_the_prompt_it_lost(manager):
     session._report_limit_block()
     assert seen == [("rate_limit_block", {"rate_limit_type": "five_hour",
                                           "resets_at": 1_800_000_000,
-                                          "prompt": "run the suite"})]
+                                          "prompt": "run the suite",
+                                          "subagents": []})]
 
 
 def test_a_turn_that_merely_ended_reports_nothing(manager):
@@ -328,3 +329,108 @@ def test_a_result_record_with_no_agent_id_is_not_a_subagent(manager):
     session._handle_message(agent_result_message({"filePath": "/tmp/x",
                                                   "numLines": 12}, "toolu_read"))
     assert "agent_id" not in seen[0][1]
+
+
+# ------------------------------------- the subagents a limit left with no result
+
+
+def agent_call_message(tool_use_id="toolu_agent1", description="Find the leak"):
+    from claude_agent_sdk import AssistantMessage, ToolUseBlock
+    return AssistantMessage(
+        content=[ToolUseBlock(id=tool_use_id, name="Agent",
+                              input={"description": description,
+                                     "prompt": "look for it"})],
+        model="claude-opus-5",
+    )
+
+
+def test_an_agent_call_that_never_reported_back_stays_open(manager):
+    session = make_session(manager)
+    emitted(session)
+    session._handle_message(agent_call_message())
+    assert session._open_agents == {"toolu_agent1": "Find the leak"}
+
+
+def test_an_agent_call_that_reported_back_is_closed(manager):
+    session = make_session(manager)
+    emitted(session)
+    session._handle_message(agent_call_message())
+    session._handle_message(agent_result_message(
+        {"agentId": "a1"}, "toolu_agent1"))
+    assert session._open_agents == {}
+
+
+def test_an_ordinary_tool_call_is_not_tracked_as_an_agent(manager):
+    from claude_agent_sdk import AssistantMessage, ToolUseBlock
+
+    session = make_session(manager)
+    emitted(session)
+    session._handle_message(AssistantMessage(
+        content=[ToolUseBlock(id="toolu_bash", name="Bash",
+                              input={"command": "ls"})],
+        model="claude-opus-5"))
+    assert session._open_agents == {}
+
+
+def test_a_blocked_turn_names_the_subagents_it_stranded(manager, monkeypatch):
+    """Their ids are not in the transcript -- the calls produced no result --
+    so they come off the CLI's own records on disk, matched by tool call."""
+    session = make_session(manager)
+    manager.get("s1").sdk_session_id = "sess-uuid"
+    monkeypatch.setattr(sdk_session.claude_history, "list_subagents",
+                        lambda sid: [
+                            {"agent_id": "a9", "tool_use_id": "toolu_agent1",
+                             "description": "Find the leak"},
+                            {"agent_id": "a8", "tool_use_id": "toolu_other",
+                             "description": "Something else"},
+                        ])
+    session._handle_message(agent_call_message())
+    session._note_limit_block(FakeRateLimitInfo())
+    seen = emitted(session)
+    session._report_limit_block()
+    assert seen[0][1]["subagents"] == [{"agent_id": "a9",
+                                        "description": "Find the leak"}]
+
+
+def test_a_call_with_no_record_on_disk_is_left_out(manager, monkeypatch):
+    """An agent that never got far enough to be filed has no id to offer, and a
+    card naming it without one would be an offer that cannot be taken."""
+    session = make_session(manager)
+    manager.get("s1").sdk_session_id = "sess-uuid"
+    monkeypatch.setattr(sdk_session.claude_history, "list_subagents",
+                        lambda sid: [])
+    session._handle_message(agent_call_message())
+    session._note_limit_block(FakeRateLimitInfo())
+    seen = emitted(session)
+    session._report_limit_block()
+    assert seen[0][1]["subagents"] == []
+
+
+def test_the_stranded_list_is_reported_once(manager, monkeypatch):
+    """The calls never return, so without clearing they would be named again at
+    the end of every later turn."""
+    session = make_session(manager)
+    manager.get("s1").sdk_session_id = "sess-uuid"
+    monkeypatch.setattr(sdk_session.claude_history, "list_subagents",
+                        lambda sid: [{"agent_id": "a9",
+                                      "tool_use_id": "toolu_agent1"}])
+    session._handle_message(agent_call_message())
+    session._note_limit_block(FakeRateLimitInfo())
+    emitted(session)
+    session._report_limit_block()
+    assert session._open_agents == {}
+
+
+def test_unreadable_records_cost_the_card_its_list_but_not_the_card(manager,
+                                                                    monkeypatch):
+    def boom(sid):
+        raise OSError("gone")
+
+    session = make_session(manager)
+    manager.get("s1").sdk_session_id = "sess-uuid"
+    monkeypatch.setattr(sdk_session.claude_history, "list_subagents", boom)
+    session._handle_message(agent_call_message())
+    session._note_limit_block(FakeRateLimitInfo())
+    seen = emitted(session)
+    assert session._report_limit_block() is True
+    assert seen[0][1]["subagents"] == []

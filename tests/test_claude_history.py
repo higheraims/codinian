@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -91,6 +92,73 @@ def test_a_subagent_id_is_checked_before_it_lands_in_a_filename(write_transcript
 def test_a_session_with_no_subagents_has_no_subagent_directory(write_transcript):
     write_transcript([user("hello")])
     assert claude_history.subagent_dir(SESSION) is None
+
+
+# ------------------------------------------- the records that pair id to call
+
+
+@pytest.fixture
+def write_subagent_meta(write_transcript):
+    """One `agent-<id>.meta.json`, the record the CLI files as soon as a
+    subagent exists -- before the `Agent` call that started it returns."""
+    path = write_transcript([user("hello")])
+    directory = path.with_suffix("") / "subagents"
+    directory.mkdir(parents=True, exist_ok=True)
+
+    def _write(agent_id, mtime=None, **record):
+        meta = directory / f"agent-{agent_id}.meta.json"
+        meta.write_text(json.dumps(record))
+        if mtime is not None:
+            os.utime(meta, (mtime, mtime))
+        return meta
+    return _write
+
+
+def test_a_record_pairs_an_agent_id_with_the_call_that_started_it(write_subagent_meta):
+    write_subagent_meta("abc123", toolUseId="toolu_1", description="Find the leak",
+                        agentType="claude", model="sonnet")
+    assert claude_history.list_subagents(SESSION) == [
+        {"agent_id": "abc123", "tool_use_id": "toolu_1",
+         "description": "Find the leak", "agent_type": "claude",
+         "model": "sonnet"},
+    ]
+
+
+def test_records_come_back_newest_first(write_subagent_meta):
+    """A call retried after a failure has two records. The caller takes the
+    first match, so the first has to be the most recent attempt."""
+    write_subagent_meta("older", mtime=1_000, toolUseId="toolu_1")
+    write_subagent_meta("newer", mtime=2_000, toolUseId="toolu_1")
+    assert [r["agent_id"] for r in claude_history.list_subagents(SESSION)] == [
+        "newer", "older"]
+
+
+def test_a_record_missing_its_optional_fields_still_reports_the_id(write_subagent_meta):
+    write_subagent_meta("abc123", toolUseId="toolu_1")
+    assert claude_history.list_subagents(SESSION) == [
+        {"agent_id": "abc123", "tool_use_id": "toolu_1"}]
+
+
+def test_one_unreadable_record_does_not_cost_the_others(write_subagent_meta):
+    write_subagent_meta("good", mtime=2_000, toolUseId="toolu_1")
+    write_subagent_meta("bad", mtime=1_000)
+    (claude_history.subagent_dir(SESSION) / "agent-bad.meta.json").write_text("{not json")
+    assert [r["agent_id"] for r in claude_history.list_subagents(SESSION)] == ["good"]
+
+
+@pytest.mark.parametrize("bad_agent", ["a.b", "a b", "x" * 65])
+def test_an_id_that_would_not_pass_the_filename_guard_is_skipped(write_subagent_meta,
+                                                                 bad_agent):
+    """These ids come off a filename rather than going into one, so nothing
+    unsafe can be built here -- but they are handed to callers that do build
+    paths from them, and are held to the same rule `subagent_path` applies."""
+    write_subagent_meta(bad_agent, toolUseId="toolu_1")
+    assert claude_history.list_subagents(SESSION) == []
+
+
+def test_a_session_with_no_subagents_reports_none(write_transcript):
+    write_transcript([user("hello")])
+    assert claude_history.list_subagents(SESSION) == []
 
 
 # --------------------------------------------------------- prior sessions

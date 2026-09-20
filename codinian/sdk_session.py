@@ -112,6 +112,12 @@ ALWAYS_ASK = frozenset({"ExitPlanMode"})
 # reads an ordinary successful result instead of a denial.
 QUESTION_TOOL = "AskUserQuestion"
 
+# The tool that spawns a subagent. Named here because a call to it is the only
+# one whose id has to outlive the turn: a subagent a usage limit killed is
+# continued by an id that the call it belongs to never got to report
+# (ISSUE-059).
+AGENT_TOOL = "Agent"
+
 # How long deltas accumulate before one frame goes out (ISSUE-033).
 #
 # Measured on the wire: the event envelope is 142 bytes around a 4-byte token,
@@ -154,6 +160,13 @@ CANCELLED_QUOTE_CHARS = 60
 # arriving does not change what it is doing. See `_run`.
 BUSY_STATUSES = frozenset({
     SessionStatus.WORKING, SessionStatus.AWAITING_APPROVAL,
+})
+
+# States in which no turn is running, so content arriving is proof one started
+# again. `rate_limited` belongs here with `awaiting_input` because it differs
+# from it only in why the session stopped, not in what it is doing (ISSUE-058).
+IDLE_STATUSES = frozenset({
+    SessionStatus.AWAITING_INPUT, SessionStatus.RATE_LIMITED,
 })
 
 
@@ -253,6 +266,10 @@ class SdkSession:
         # The prompt handed to the CLI most recently, which is what a blocked
         # turn was going to be about.
         self._last_query_text: str | None = None
+        # `Agent` calls that have not reported back: tool_use_id -> description.
+        # A subagent a limit cut off is one of these and stays one, because the
+        # call it belongs to never returns (ISSUE-059).
+        self._open_agents: dict[str, str] = {}
 
     # ------------------------------------------------------------- lifecycle
 
@@ -441,7 +458,7 @@ class SdkSession:
         Only an assistant or user message counts. A rate limit event or a task
         notification can arrive on a genuinely idle session, and a status that
         went to working on one of those would have nothing to bring it back."""
-        if self._closed or self._status != SessionStatus.AWAITING_INPUT:
+        if self._closed or self._status not in IDLE_STATUSES:
             return
         self._emit_status(SessionStatus.WORKING)
 
@@ -451,12 +468,15 @@ class SdkSession:
         The status change lives here rather than where the reading stops,
         because those were the same place before ISSUE-054 and only one of them
         was right: the turn ends when the CLI says so."""
-        self._report_limit_block()
+        blocked = self._report_limit_block()
         self._schedule_name_lookup()
         if not self._closed:
-            self._emit_status(SessionStatus.AWAITING_INPUT)
+            # A blocked session takes input exactly as an idle one does, and
+            # says the opposite thing about why it stopped (ISSUE-058).
+            self._emit_status(SessionStatus.RATE_LIMITED if blocked
+                              else SessionStatus.AWAITING_INPUT)
 
-    def _report_limit_block(self) -> None:
+    def _report_limit_block(self) -> bool:
         """Say that this turn ended on a usage limit rather than on an answer,
         and hand back the prompt it was going to run (ISSUE-058).
 
@@ -470,9 +490,54 @@ class SdkSession:
         window on a turn nobody is watching."""
         block, self._limit_block = self._limit_block, None
         if block is None:
-            return
-        self._emit("rate_limit_block", {**block,
-                                        "prompt": self._last_query_text})
+            return False
+        self._emit("rate_limit_block", {
+            **block,
+            "prompt": self._last_query_text,
+            "subagents": self._stranded_subagents(),
+        })
+        # One limit, one list. These calls never return, so without this they
+        # would be reported again at the end of every later turn.
+        self._open_agents.clear()
+        return True
+
+    def _stranded_subagents(self) -> list[dict]:
+        """The subagents that were still running when the limit landed, each
+        with the id that continues it (ISSUE-059).
+
+        Their ids are not in the transcript: an agent id reaches the parent on
+        the `Agent` call's result, and these calls produced none. What does have
+        them is the CLI's own bookkeeping on disk, which pairs an agent id with
+        the tool call that started it as soon as the agent exists.
+
+        Reads the disk on the loop thread, which is worth it here: this runs
+        once per limit, against a directory holding one small file per subagent.
+        """
+        session = self._manager.get(self._session_id)
+        sdk_session_id = getattr(session, "sdk_session_id", None)
+        if not self._open_agents or not sdk_session_id:
+            return []
+        try:
+            records = claude_history.list_subagents(sdk_session_id)
+        except Exception:
+            # Best effort. A resume offered without the agent list is still a
+            # resume; one that raised here would leave no card at all.
+            return []
+        # Newest first from `list_subagents`, so the first record for a tool
+        # call is its most recent attempt.
+        by_call: dict = {}
+        for record in records:
+            by_call.setdefault(record.get("tool_use_id"), record)
+        stranded = []
+        for tool_use_id, described in self._open_agents.items():
+            record = by_call.get(tool_use_id)
+            if record is None:
+                continue
+            stranded.append({
+                "agent_id": record["agent_id"],
+                "description": record.get("description") or described or "",
+            })
+        return stranded
 
     def _fail(self, message: str) -> None:
         """The session has stopped for good. Say so, refuse further sends,
@@ -1185,6 +1250,9 @@ class SdkSession:
         elif isinstance(block, ThinkingBlock):
             self._emit("thinking", tag({"text": getattr(block, "thinking", "")}))
         elif isinstance(block, ToolUseBlock):
+            if block.name == AGENT_TOOL:
+                self._open_agents[block.id] = str(
+                    (block.input or {}).get("description") or "")
             self._emit("tool_use", tag({"tool_use_id": block.id, "name": block.name,
                                         "input": block.input}))
         elif isinstance(block, ToolResultBlock):
@@ -1199,6 +1267,7 @@ class SdkSession:
                 keep=True,
                 session_id=self._session_id,
             )
+            self._open_agents.pop(block.tool_use_id, None)
             self._emit("tool_result", tag({
                 "tool_use_id": block.tool_use_id,
                 "is_error": getattr(block, "is_error", None),

@@ -45,6 +45,7 @@ SDK_STATUS_CSS = {
     SessionStatus.WORKING.value:           "success",
     SessionStatus.AWAITING_APPROVAL.value: "warning",
     SessionStatus.AWAITING_INPUT.value:    "accent",
+    SessionStatus.RATE_LIMITED.value:      "warning",
     SessionStatus.DONE.value:              "dim-label",
     SessionStatus.ERROR.value:             "error",
 }
@@ -1385,6 +1386,12 @@ class CodinianWindow(Adw.ApplicationWindow):
         elif status_value == SessionStatus.ERROR.value:
             title = f"{name} hit an error"
             body = "The session stopped. Open it to see what happened."
+        elif status_value == SessionStatus.RATE_LIMITED.value:
+            # Unconditional, where "finished" below waits for real work first.
+            # A turn this one never ran is worth saying however it arrived at
+            # it, and the session cannot pick it back up on its own (ISSUE-058).
+            title = f"{name} hit a usage limit"
+            body = "The turn did not run. Open it to resume when the window reopens."
         elif (status_value == SessionStatus.AWAITING_INPUT.value
               and previous in (SessionStatus.WORKING.value,
                                SessionStatus.AWAITING_APPROVAL.value)):

@@ -24,6 +24,11 @@ class SessionStatus(str, Enum):
     WORKING = "working"
     AWAITING_APPROVAL = "awaiting_approval"
     AWAITING_INPUT = "awaiting_input"
+    # A turn that stopped on a usage limit rather than on an answer (ISSUE-058).
+    # Its own status because it takes input exactly as `awaiting_input` does but
+    # means the opposite thing: the session is not idle, it is stopped, and from
+    # the sidebar the two were indistinguishable.
+    RATE_LIMITED = "rate_limited"
     DONE = "done"
     ERROR = "error"
 

@@ -1330,6 +1330,7 @@
     working: 'working',
     awaiting_approval: 'needs approval',
     awaiting_input: 'awaiting input',
+    rate_limited: 'limit reached',
     done: 'done',
     error: 'error',
   };
@@ -1399,6 +1400,7 @@
     working: 'Claude is working on a turn.',
     awaiting_approval: 'It is waiting on a tool approval.',
     awaiting_input: 'It is connected, waiting for a message.',
+    rate_limited: 'A usage limit stopped its last turn, which it can still be asked to resume.',
   };
 
   function closeSession(id) {
@@ -1482,7 +1484,11 @@
       });
       row.appendChild(
         h('div', { class: 'session-row-top' }, [
-          h('span', { class: `dot dot-${s.status}` }),
+          // The dot carries the status and the row has no room to spell it
+          // out, so the word goes in the tooltip. Six colours is more than a
+          // reader should have to hold in their head, and one of them now
+          // means "stopped on a usage limit" (ISSUE-058).
+          h('span', { class: `dot dot-${s.status}`, title: statusLabel(s.status) }),
           nameEl,
           renameBtn,
           closeBtn,
@@ -3482,7 +3488,32 @@
     body.appendChild(h('div', { class: 'limit-block-when' },
       `The window reopens ${fmtResetTime(ev.resets_at)}.`));
 
-    const prompt = (ev.prompt || '').trim();
+    // The subagents the limit cut off (ISSUE-059). Each keeps its transcript,
+    // so continuing one costs a fraction of starting it over -- but only the
+    // parent can do that, and only if it is told the ids. They are not in the
+    // transcript: an agent id reaches the parent on the Agent call's result,
+    // and these calls produced none.
+    const stranded = Array.isArray(ev.subagents) ? ev.subagents : [];
+    if (stranded.length) {
+      const list = h('ul', { class: 'limit-block-agents' });
+      for (const agent of stranded) {
+        list.appendChild(h('li', {}, [
+          h('span', { class: 'limit-block-agent-desc' },
+            agent.description || 'subagent'),
+          h('code', { class: 'limit-block-agent-id' }, agent.agent_id),
+        ]));
+      }
+      body.appendChild(h('div', { class: 'limit-block-note' },
+        stranded.length === 1
+          ? 'One subagent was cut off. It can be continued rather than restarted:'
+          : `${stranded.length} subagents were cut off. They can be continued rather than restarted:`));
+      body.appendChild(list);
+    }
+
+    // What Resume sends, shown rather than described: the button is one click
+    // and the message goes to Claude, so the text it puts there is the thing
+    // worth reading before clicking.
+    const prompt = resumeText((ev.prompt || '').trim(), stranded);
     if (prompt) {
       body.appendChild(h('div', { class: 'limit-block-prompt' }, prompt));
     }
@@ -3538,6 +3569,27 @@
     body.appendChild(note);
     el.appendChild(body);
     return el;
+  }
+
+  // The message a Resume click sends: the prompt the turn never ran, and the
+  // ids of the subagents it stranded.
+  //
+  // Named rather than left implicit because a resumed turn that re-spawns work
+  // already half done is the expensive mistake here, and the parent has no
+  // other way to know those agents are still there. Phrased as what is
+  // available rather than as an order, so Claude can judge which are still
+  // worth continuing.
+  function resumeText(prompt, stranded) {
+    if (!stranded.length) return prompt;
+    const lines = stranded.map(
+      (a) => `- ${a.agent_id}${a.description ? ` (${a.description})` : ''}`);
+    const note = [
+      'A usage limit stopped the previous turn. These subagents were cut off',
+      'and still have their transcripts, so they can be continued with',
+      'SendMessage rather than started again:',
+      ...lines,
+    ].join('\n');
+    return prompt ? `${prompt}\n\n${note}` : note;
   }
 
   // A gap, in the coarsest unit that still says something useful. Rounded up,
