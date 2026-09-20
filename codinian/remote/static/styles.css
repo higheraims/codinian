@@ -1267,6 +1267,11 @@ button { cursor: pointer; }
   font-size: .82rem;
 }
 
+/* A question's own Other box (ISSUE-057). Borrows .question-freeform's looks so
+   the two read as one kind of control, and sits tighter to the options above it
+   than the card-global box sits to the card. */
+.question-other { margin-top: .35rem; font-size: .8rem; }
+
 .approval-reason {
   margin-top: .5rem;
   width: 100%;

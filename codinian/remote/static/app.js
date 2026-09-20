@@ -3124,6 +3124,7 @@
 
     const body = h('div', { class: 'question-card-body' });
     const picked = new Map();   // question text -> Set of chosen labels
+    const others = new Map();   // question text -> that question's Other input
     const optionButtons = [];
 
     for (const q of questions) {
@@ -3139,6 +3140,30 @@
       block.appendChild(head);
 
       const opts = h('div', { class: 'question-options' });
+
+      // The CLI's own dialog carries an Other option on every question, so a
+      // four-question card can take three picked answers and one typed one.
+      // The card-global box below cannot do that: anything typed there is one
+      // answer to the whole card, so reaching for it meant giving up the three
+      // already picked (ISSUE-057).
+      const other = h('input', { class: 'question-freeform question-other',
+                                 type: 'text',
+                                 placeholder: 'Other: answer in your own words' });
+      const clearPicks = () => {
+        picked.get(qtext).clear();
+        for (const sibling of opts.querySelectorAll('.question-option')) {
+          sibling.classList.remove('is-chosen');
+        }
+      };
+      other.addEventListener('input', () => {
+        // Single-select is a radio group and a typed answer is one of its
+        // choices, so it cannot sit next to a picked option without making
+        // the answer two things at once. Multi-select can be both.
+        if (!multi && other.value.trim()) clearPicks();
+        updateSubmit();
+      });
+      others.set(qtext, other);
+
       for (const opt of q.options || []) {
         const btn = h('button', { class: 'question-option', type: 'button' }, [
           h('span', { class: 'question-option-label' }, opt.label),
@@ -3150,11 +3175,12 @@
             if (chosen.has(opt.label)) chosen.delete(opt.label);
             else chosen.add(opt.label);
           } else {
-            chosen.clear();
+            clearPicks();
+            // The radio rule from the other side: the picked option is the
+            // answer now, so the typed one stops being it. Left in the box it
+            // would still read as part of the answer without counting as one.
+            other.value = '';
             chosen.add(opt.label);
-            for (const sibling of opts.querySelectorAll('.question-option')) {
-              sibling.classList.remove('is-chosen');
-            }
           }
           btn.classList.toggle('is-chosen', chosen.has(opt.label));
           updateSubmit();
@@ -3163,13 +3189,15 @@
         optionButtons.push(btn);
       }
       block.appendChild(opts);
+      block.appendChild(other);
       body.appendChild(block);
     }
 
-    // The CLI adds an "Other" affordance to its own dialog rather than letting
-    // the model offer one, so this is the same escape hatch, not an extra.
+    // For a reply that belongs to the card rather than to any one question.
+    // The per-question Other boxes above are the CLI's escape hatch; this one
+    // is for saying something the questions did not ask for.
     const freeform = h('input', { class: 'question-freeform', type: 'text',
-                                  placeholder: 'or answer in your own words' });
+                                  placeholder: 'or reply to the whole card' });
     freeform.addEventListener('input', updateSubmit);
     body.appendChild(freeform);
 
@@ -3179,9 +3207,18 @@
     const sendError = h('div', { class: 'approval-edit-error' });
     sendError.style.display = 'none';
 
+    // One question's answer: the options picked, and whatever was typed into
+    // that question's own Other box.
+    function answerFor(qtext) {
+      const parts = [...picked.get(qtext)];
+      const typed = others.get(qtext).value.trim();
+      if (typed) parts.push(typed);
+      return parts.join(', ');
+    }
+
     function anyChosen() {
       if (freeform.value.trim()) return true;
-      for (const chosen of picked.values()) if (chosen.size) return true;
+      for (const qtext of picked.keys()) if (answerFor(qtext)) return true;
       return false;
     }
     function updateSubmit() { btnSend.disabled = settled || !anyChosen(); }
@@ -3193,8 +3230,9 @@
     // which was which.
     function composedAnswer() {
       const lines = [];
-      for (const [qtext, chosen] of picked) {
-        if (chosen.size) lines.push(`${qtext}\n${[...chosen].join(', ')}`);
+      for (const qtext of picked.keys()) {
+        const said = answerFor(qtext);
+        if (said) lines.push(`${qtext}\n${said}`);
       }
       const free = freeform.value.trim();
       if (free) lines.push(free);
@@ -3223,8 +3261,9 @@
       sendError.style.display = 'none';
       const answers = {};
       if (!skip) {
-        for (const [qtext, chosen] of picked) {
-          if (chosen.size) answers[qtext] = [...chosen].join(', ');
+        for (const qtext of picked.keys()) {
+          const said = answerFor(qtext);
+          if (said) answers[qtext] = said;
         }
       }
       const delivered = send({
@@ -3262,6 +3301,7 @@
         btnSend.disabled = true;
         btnSkip.disabled = true;
         freeform.disabled = true;
+        for (const typed of others.values()) typed.disabled = true;
         for (const btn of optionButtons) btn.disabled = true;
         el.classList.add('is-expired');
         sendError.textContent = message;
