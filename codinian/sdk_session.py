@@ -246,6 +246,13 @@ class SdkSession:
         # while the session shows idle from ordinary mid-turn traffic
         # (ISSUE-055).
         self._status: SessionStatus | None = None
+        # A usage limit that closed the window this turn was going to run in,
+        # held until the turn ends so the card can say what it cost (ISSUE-058).
+        # None whenever the model is producing, which is proof it did not.
+        self._limit_block: dict | None = None
+        # The prompt handed to the CLI most recently, which is what a blocked
+        # turn was going to be about.
+        self._last_query_text: str | None = None
 
     # ------------------------------------------------------------- lifecycle
 
@@ -371,6 +378,7 @@ class SdkSession:
                 # and hide a card that still needs an answer.
                 if self._status not in BUSY_STATUSES:
                     self._emit_status(SessionStatus.WORKING)
+                self._last_query_text = text
                 await self._client.query(self._envelope(message_uuid, text))
                 if self._failed:
                     break
@@ -443,9 +451,28 @@ class SdkSession:
         The status change lives here rather than where the reading stops,
         because those were the same place before ISSUE-054 and only one of them
         was right: the turn ends when the CLI says so."""
+        self._report_limit_block()
         self._schedule_name_lookup()
         if not self._closed:
             self._emit_status(SessionStatus.AWAITING_INPUT)
+
+    def _report_limit_block(self) -> None:
+        """Say that this turn ended on a usage limit rather than on an answer,
+        and hand back the prompt it was going to run (ISSUE-058).
+
+        Without this the two are indistinguishable: both leave the session in
+        `awaiting_input` with the last thing the user typed and no reply under
+        it. The CLI does wait out the limit and carry on by itself, but only
+        for an interactive session -- the check is `isInteractive()`, ahead of
+        everything else -- and a session the SDK drives is never that. So the
+        window and its reset time are reported here and the resume is left to
+        the user, which is also the only version that cannot spend a fresh
+        window on a turn nobody is watching."""
+        block, self._limit_block = self._limit_block, None
+        if block is None:
+            return
+        self._emit("rate_limit_block", {**block,
+                                        "prompt": self._last_query_text})
 
     def _fail(self, message: str) -> None:
         """The session has stopped for good. Say so, refuse further sends,
@@ -1016,6 +1043,7 @@ class SdkSession:
             self._handle_stream_event(msg)
         elif isinstance(msg, RateLimitEvent):
             info = getattr(msg, "rate_limit_info", None)
+            self._note_limit_block(info)
             # Everything the CLI sent, not the four fields the banner needed.
             # `utilization` is the percentage, and it is the one field the CLI
             # leaves out on a quiet account, so the window and its reset time
@@ -1031,6 +1059,33 @@ class SdkSession:
                 "overage_disabled_reason": getattr(info, "overage_disabled_reason", None),
             })
         # ConversationResetMessage is still ignored.
+
+        # Proof the limit did not stop this turn: the model is producing under
+        # it. An `allowed_warning` arrives on a turn that runs perfectly well,
+        # and a `rejected` one can land on a session that is merely sitting
+        # idle, so neither is worth a card on its own.
+        if isinstance(msg, AssistantMessage):
+            self._limit_block = None
+
+    def _note_limit_block(self, info) -> None:
+        """Hold a rate limit that actually closes the window, for `_end_turn`.
+
+        Three things have to be true, and they are the same three the CLI asks
+        before it offers to wait. The window has to be `rejected` rather than
+        warned about; it has to say when it reopens, since a wait with no end
+        is not one a card can offer; and overage has to be unavailable, because
+        a session running on it is not stopped."""
+        if getattr(info, "status", None) != "rejected":
+            return
+        resets_at = getattr(info, "resets_at", None)
+        if not isinstance(resets_at, (int, float)):
+            return
+        if getattr(info, "overage_status", None) == "allowed":
+            return
+        self._limit_block = {
+            "rate_limit_type": getattr(info, "rate_limit_type", None),
+            "resets_at": int(resets_at),
+        }
 
     def _handle_stream_event(self, msg) -> None:
         """A partial assistant message, on its way to becoming a real one.

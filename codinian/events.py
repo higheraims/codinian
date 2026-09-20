@@ -59,5 +59,5 @@ EVENT_TYPES = frozenset({
     "system", "text", "thinking", "tool_use", "tool_result",
     "approval_request", "approval_resolved", "approval_expired",
     "question_request", "question_resolved", "permission_note",
-    "usage", "rate_limit", "plan_usage", "status",
+    "usage", "rate_limit", "rate_limit_block", "plan_usage", "status",
 })

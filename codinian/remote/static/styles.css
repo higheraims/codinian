@@ -1338,6 +1338,39 @@ button { cursor: pointer; }
   font-size: .8rem;
 }
 
+/* The offer to pick a turn back up once the window reopens (ISSUE-058). Amber
+   like the banner above it, since the two are about the same limit, but a card
+   rather than a strip: this one has something to do in it. */
+.limit-block-card {
+  width: 100%;
+  align-self: stretch;
+  border: 1px solid var(--amber);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+.limit-block-head {
+  padding: .6rem .8rem .3rem;
+  font-weight: 600;
+  font-size: .88rem;
+  color: var(--amber);
+}
+.limit-block-body { padding: 0 .8rem .8rem; }
+.limit-block-when { font-size: .82rem; color: var(--text-muted); }
+/* The held prompt, quoted rather than put in a box a reader might type into:
+   it is not editable here, and a resume that silently sent something else
+   would be worse than no resume. */
+.limit-block-prompt {
+  margin-top: .5rem;
+  padding-left: .6rem;
+  border-left: 2px solid var(--border);
+  font-size: .82rem;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.limit-block-card.is-resumed { border-style: dashed; }
+
 /* Errors that have no card to attach to: a session that failed to start, a
    request the server could not handle. Before this they went to console.warn,
    so a session that never started showed an error dot and nothing else. */

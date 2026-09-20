@@ -2729,6 +2729,12 @@
         break;
       }
 
+      case 'rate_limit_block': {
+        breakBubble(target);
+        at.appendChild(buildLimitBlockCard(ev));
+        break;
+      }
+
       case 'system': {
         const line = buildSystemLine(ev);
         // Some system subtypes carry nothing worth showing, in which case the
@@ -3432,6 +3438,100 @@
       bits.push('no usage credits available');
     }
     return h('div', { class: 'rate-limit-banner' }, bits.join(' · '));
+  }
+
+  // The turn stopped on a usage limit, and this is the offer to pick it back up
+  // (ISSUE-058).
+  //
+  // The banner above already says the window is closed. What it cannot say is
+  // that a turn died in it, which is the part that looks like nothing: the
+  // session lands on "awaiting input" with the user's own message as the last
+  // thing in the transcript and no reply under it, exactly as if Claude had
+  // finished. So this card says the turn did not run, holds the prompt, and
+  // waits.
+  //
+  // Nothing sends itself. The CLI's own auto-continue is for interactive
+  // sessions only, and a wait that ends by spending a fresh window on a turn
+  // nobody is watching is worse than one that ends with a button.
+  function buildLimitBlockCard(ev) {
+    const window_ = RATE_LIMIT_WINDOW_LABELS[ev.rate_limit_type] || ev.rate_limit_type;
+    const el = h('div', { class: 'limit-block-card' });
+    el.appendChild(h('div', { class: 'limit-block-head' },
+      window_ ? `${window_} limit reached -- this turn did not run` :
+                'Usage limit reached -- this turn did not run'));
+
+    const body = h('div', { class: 'limit-block-body' });
+    body.appendChild(h('div', { class: 'limit-block-when' },
+      `The window reopens ${fmtResetTime(ev.resets_at)}.`));
+
+    const prompt = (ev.prompt || '').trim();
+    if (prompt) {
+      body.appendChild(h('div', { class: 'limit-block-prompt' }, prompt));
+    }
+
+    const btn = h('button', { class: 'btn-approve', type: 'button' }, 'Resume');
+    const actions = h('div', { class: 'approval-actions' }, [btn]);
+    const note = h('div', { class: 'approval-edit-error' });
+    note.style.display = 'none';
+
+    let settled = false;
+
+    // Counts down rather than going straight to enabled, because the wait is
+    // the whole content of this card: a button that is merely greyed out says
+    // nothing about how long, and the reset time above it is an absolute clock
+    // reading that a reader still has to subtract from.
+    function tick() {
+      if (settled) return;
+      const left = Math.round((ev.resets_at || 0) - Date.now() / 1000);
+      if (left > 0) {
+        btn.disabled = true;
+        btn.textContent = `Resume in ${fmtCountdown(left)}`;
+      } else {
+        btn.disabled = false;
+        btn.textContent = prompt ? 'Resume' : 'Resume (nothing held to re-send)';
+        if (!prompt) btn.disabled = true;
+      }
+    }
+    tick();
+    const timer = setInterval(() => {
+      if (!el.isConnected) { clearInterval(timer); return; }
+      tick();
+    }, 1000);
+
+    btn.addEventListener('click', () => {
+      if (settled || !prompt || !state.currentId) return;
+      settled = true;
+      btn.disabled = true;
+      clearInterval(timer);
+      if (!send({ t: 'send', session_id: state.currentId, text: prompt })) {
+        // Same rule as the composer's: a send that went nowhere leaves the
+        // card usable rather than reporting work it did not do.
+        settled = false;
+        note.textContent = NOT_CONNECTED_TEXT;
+        note.style.display = 'block';
+        tick();
+        return;
+      }
+      btn.textContent = 'Resumed';
+      el.classList.add('is-resumed');
+    });
+
+    body.appendChild(actions);
+    body.appendChild(note);
+    el.appendChild(body);
+    return el;
+  }
+
+  // A gap, in the coarsest unit that still says something useful. Rounded up,
+  // so a countdown never reads 0 while the button is still disabled.
+  function fmtCountdown(seconds) {
+    if (seconds >= 3600) {
+      const hours = Math.floor(seconds / 3600);
+      const minutes = Math.ceil((seconds % 3600) / 60);
+      return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
+    }
+    if (seconds >= 60) return `${Math.ceil(seconds / 60)}m`;
+    return `${seconds}s`;
   }
 
   // A tool call the permission mode let through without asking. Says which

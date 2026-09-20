@@ -161,6 +161,17 @@ up to N ignores anything `<= N`. Backlog replay (below) uses it too.
   Render as a banner when `status` is not `allowed`, and as the footer's fallback
   reading when no `plan_usage` has been captured.
 
+- **`rate_limit_block`** `{ rate_limit_type: string|null, resets_at: number, prompt: string|null }`
+  The turn that just ended stopped on a usage limit rather than on an answer
+  (ISSUE-058). Emitted at the end of a turn that saw a `rejected` `rate_limit`
+  with a reset time and no overage to fall back on, and produced no assistant
+  message under it. `prompt` is the message that was in flight, so a client can
+  offer the resume without the user retyping it.
+
+  Distinct from `rate_limit` because that event is a reading and this one is an
+  outcome: a `rejected` reading also arrives on a session that is merely sitting
+  idle, where nothing was lost and there is nothing to resume.
+
 **`parent_tool_use_id`** (optional, on `text`, `thinking`, `tool_use` and
 `tool_result`). Present when the block came from a **subagent** rather than the
 main thread, and equal to the id of the `Agent` tool call that spawned it

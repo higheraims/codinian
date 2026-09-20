@@ -1,7 +1,7 @@
 ---
 id: ISSUE-058
 title: Wait out a usage limit and carry on, instead of leaving the turn stalled
-status: open
+status: in-progress
 type: feature
 area: sdk
 created: 2026-09-20
@@ -47,12 +47,11 @@ What happens today: the limit lands, the banner appears, the turn ends, the
 session sits in `awaiting_input`, and the work stops there until a person
 notices the window reopened and re-sends the prompt themselves.
 
-## Open question, and it changes the work
+## Decided: offer it
 
-Auto-resume or offer it? Waiting five hours and then sending a prompt nobody is
-watching is a different product from a card that says "blocked until 14:05 --
-resume then?" with a button. The second is smaller and cannot surprise anyone;
-the first is what the CLI does.
+Not auto-resume. A wait that ends by spending a fresh window on a turn nobody is
+watching is worse than one that ends with a button, and the card is most of the
+value either way: the prompt is held, so nothing has to be retyped.
 
 ## Acceptance / done-when
 
@@ -68,6 +67,22 @@ the first is what the CLI does.
 
 Checked against claude-agent-sdk 0.2.140 and the CLI at 2.1.267 (latest
 published at the time of writing: 2.1.278).
+
+Done, for the main turn. `sdk_session.py` holds a `rejected` limit that carries
+a reset time and has no overage behind it, drops it again the moment an
+assistant message proves the turn ran, and emits `rate_limit_block` at the end
+of a turn that still has one -- carrying the prompt handed to the CLI most
+recently. `app.js` renders that as an amber card with the window, the reset
+time, the held prompt quoted, and a Resume button that counts down and sends
+nothing until the window reopens. Tests in `tests/test_sdk_session.py`; the card
+checked in headless Chromium against a live pane, both before and after reset,
+with and without a held prompt.
+
+Still open: the sidebar. A blocked session sits in `awaiting_input` and looks
+exactly like an idle one from outside the pane, so with several panes open there
+is nothing saying which is stalled.
+
+Also still open, and the reason subagents are not covered: see ISSUE-059.
 
 Upstream has an open feature request, anthropics/claude-code#94222, for the
 related subagent case: a subagent killed by a usage limit is resumable via

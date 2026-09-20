@@ -191,3 +191,89 @@ def test_a_long_message_is_cut_with_an_ellipsis():
 
 def test_an_empty_message_still_quotes():
     assert sdk_session._one_line("") == '""'
+
+
+# ------------------------------------------- the usage limit that ends a turn
+
+
+class FakeRateLimitInfo:
+    """Enough of the SDK's `RateLimitInfo` for `_note_limit_block` to read."""
+
+    def __init__(self, status="rejected", resets_at=1_800_000_000,
+                 rate_limit_type="five_hour", overage_status=None):
+        self.status = status
+        self.resets_at = resets_at
+        self.rate_limit_type = rate_limit_type
+        self.overage_status = overage_status
+
+
+def emitted(session) -> list[tuple[str, dict]]:
+    """Collect what the session reports instead of putting it on a manager."""
+    seen: list[tuple[str, dict]] = []
+    session._emit = lambda etype, data: seen.append((etype, data))
+    return seen
+
+
+def test_a_rejected_limit_with_a_reset_time_is_held(manager):
+    session = make_session(manager)
+    session._note_limit_block(FakeRateLimitInfo())
+    assert session._limit_block == {"rate_limit_type": "five_hour",
+                                    "resets_at": 1_800_000_000}
+
+
+@pytest.mark.parametrize("info", [
+    # A warning is not a closed window.
+    FakeRateLimitInfo(status="allowed_warning"),
+    FakeRateLimitInfo(status="allowed"),
+    # A wait with no end is not one a card can offer.
+    FakeRateLimitInfo(resets_at=None),
+    # Overage keeps the session working, so nothing was stopped.
+    FakeRateLimitInfo(overage_status="allowed"),
+])
+def test_a_limit_that_does_not_stop_the_turn_is_not_held(manager, info):
+    session = make_session(manager)
+    session._note_limit_block(info)
+    assert session._limit_block is None
+
+
+def test_a_blocked_turn_reports_the_window_and_the_prompt_it_lost(manager):
+    session = make_session(manager)
+    session._last_query_text = "run the suite"
+    session._note_limit_block(FakeRateLimitInfo())
+    seen = emitted(session)
+    session._report_limit_block()
+    assert seen == [("rate_limit_block", {"rate_limit_type": "five_hour",
+                                          "resets_at": 1_800_000_000,
+                                          "prompt": "run the suite"})]
+
+
+def test_a_turn_that_merely_ended_reports_nothing(manager):
+    session = make_session(manager)
+    seen = emitted(session)
+    session._report_limit_block()
+    assert seen == []
+
+
+def test_one_limit_is_reported_once(manager):
+    session = make_session(manager)
+    session._note_limit_block(FakeRateLimitInfo())
+    seen = emitted(session)
+    session._report_limit_block()
+    session._report_limit_block()
+    assert len(seen) == 1
+
+
+def test_the_model_producing_under_a_limit_clears_the_block(manager):
+    """A `rejected` reading also lands on a session that is merely idle, and on
+    the turn after the window reopened. An assistant message is the proof that
+    this turn ran, so the card it would otherwise leave is dropped."""
+    from claude_agent_sdk import AssistantMessage, TextBlock
+
+    session = make_session(manager)
+    session._note_limit_block(FakeRateLimitInfo())
+    emitted(session)
+    session._handle_message(
+        AssistantMessage(content=[TextBlock(text="working on it")],
+                         model="claude-opus-5")
+    )
+    assert session._limit_block is None
