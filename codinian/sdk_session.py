@@ -1013,8 +1013,15 @@ class SdkSession:
                 self._handle_block(block, role="assistant", parent=parent)
         elif isinstance(msg, UserMessage):
             parent = getattr(msg, "parent_tool_use_id", None)
+            # What an `Agent` call reported about the subagent it ran, when
+            # this message is that call's result. Read from the same record the
+            # stored transcript files under `toolUseResult`, so a live session
+            # and a replayed one say the same thing (ISSUE-059).
+            subagent = claude_history.subagent_meta(
+                getattr(msg, "tool_use_result", None))
             for block in msg.content or []:
-                self._handle_block(block, role="user", parent=parent)
+                self._handle_block(block, role="user", parent=parent,
+                                   subagent=subagent)
         elif isinstance(msg, SystemMessage):
             data = getattr(msg, "data", {}) or {}
             if getattr(msg, "subtype", None) == "init":
@@ -1143,7 +1150,8 @@ class SdkSession:
         text it was a preview of, and the client would show the tail twice."""
         self._delta_buf.clear()
 
-    def _handle_block(self, block, role: str, parent: str | None = None) -> None:
+    def _handle_block(self, block, role: str, parent: str | None = None,
+                      subagent: dict | None = None) -> None:
         """Turn one content block into an event.
 
         `parent` is the message's `parent_tool_use_id`: the id of the `Agent`
@@ -1153,6 +1161,10 @@ class SdkSession:
         carrying this through, a subagent's work arrives looking exactly like
         the main agent's and is drawn into the top-level transcript beside it
         (ISSUE-017).
+
+        `subagent` is what the `Agent` call reported about the subagent it ran,
+        and belongs on the result rather than on the call: the agent id does
+        not exist until there is an agent. Empty for every other tool.
         """
         def tag(data: dict) -> dict:
             if parent:
@@ -1191,6 +1203,7 @@ class SdkSession:
                 "tool_use_id": block.tool_use_id,
                 "is_error": getattr(block, "is_error", None),
                 "content": content,
+                **(subagent or {}),
             }))
 
     # ---------------------------------------------------------------- emit

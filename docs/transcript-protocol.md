@@ -96,10 +96,15 @@ up to N ignores anything `<= N`. Backlog replay (below) uses it too.
   path emits one now, but the demo data does, and it costs one branch.
 
   A result closing an `Agent` call additionally carries `agent_id`, plus
-  `agent_description`, `agent_model` and `agent_status` when the transcript
-  recorded them. This only appears on replayed history: a live session streams
-  the subagent's blocks instead. The client uses `agent_id` to fetch that
-  subagent's transcript on demand (ISSUE-017).
+  `agent_description`, `agent_model` and `agent_status` when the record carried
+  them. Live and replayed sessions both have it, off the same record: the CLI
+  files it as `toolUseResult` and the SDK hands it over as
+  `UserMessage.tool_use_result` (ISSUE-017, ISSUE-059).
+
+  The client uses `agent_id` to fetch that subagent's transcript on demand, and
+  only offers to when nothing streamed -- which is the difference the two paths
+  still have. A live session streams the subagent's blocks as they happen; a
+  replayed one has none of them, because they were never in the parent's file.
 
 - **`permission_note`** `{ tool_use_id: string, name: string, mode: string, outcome: "allow"|"defer" }`
   A tool call the session's permission mode let through without asking, so no

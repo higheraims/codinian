@@ -277,3 +277,54 @@ def test_the_model_producing_under_a_limit_clears_the_block(manager):
                          model="claude-opus-5")
     )
     assert session._limit_block is None
+
+
+# ------------------------------------------------- the id a subagent is known by
+
+
+def agent_result_message(tool_use_result=None, tool_use_id="toolu_agent"):
+    """A `UserMessage` closing a tool call, with the result record the CLI
+    files beside it. That record is the field Codinian used to drop."""
+    from claude_agent_sdk import ToolResultBlock, UserMessage
+    return UserMessage(
+        content=[ToolResultBlock(tool_use_id=tool_use_id, content="done",
+                                 is_error=False)],
+        tool_use_result=tool_use_result,
+    )
+
+
+def test_a_live_agent_result_carries_the_id_the_subagent_is_known_by(manager):
+    """The id is what `SendMessage` takes to continue an agent, and what fetches
+    its transcript. It arrives on the result record, not in the result text."""
+    session = make_session(manager)
+    seen = emitted(session)
+    session._handle_message(agent_result_message(
+        {"agentId": "a1b2c3", "description": "Find the leak",
+         "resolvedModel": "claude-opus-5", "status": "completed"}))
+    assert seen == [("tool_result", {
+        "tool_use_id": "toolu_agent",
+        "is_error": False,
+        "content": "done",
+        "agent_id": "a1b2c3",
+        "agent_description": "Find the leak",
+        "agent_model": "claude-opus-5",
+        "agent_status": "completed",
+    })]
+
+
+def test_an_ordinary_tool_result_gains_no_agent_fields(manager):
+    session = make_session(manager)
+    seen = emitted(session)
+    session._handle_message(agent_result_message(None, "toolu_bash"))
+    assert seen == [("tool_result", {"tool_use_id": "toolu_bash",
+                                     "is_error": False, "content": "done"})]
+
+
+def test_a_result_record_with_no_agent_id_is_not_a_subagent(manager):
+    """Every tool's result lands in `tool_use_result`, not just the Agent
+    tool's. The id is what says which one this was."""
+    session = make_session(manager)
+    seen = emitted(session)
+    session._handle_message(agent_result_message({"filePath": "/tmp/x",
+                                                  "numLines": 12}, "toolu_read"))
+    assert "agent_id" not in seen[0][1]

@@ -388,14 +388,19 @@ def _assistant_events(entry: dict):
             }
 
 
-def _subagent_meta(entry: dict) -> dict:
+def subagent_meta(result) -> dict:
     """What a parent `tool_result` says about the subagent it is reporting.
 
     The link from an `Agent` call to its transcript is `toolUseResult.agentId`,
     not `sourceToolAssistantUUID`, which does not resolve to anything in the
     parent. The same record carries what a card header wants, so it is read out
-    here rather than opening the subagent's file to find out (ISSUE-017)."""
-    result = entry.get("toolUseResult")
+    here rather than opening the subagent's file to find out (ISSUE-017).
+
+    Takes the result record rather than the entry around it, because the live
+    path has the same record under a different name: the SDK hands it over as
+    `UserMessage.tool_use_result`. One reader for both, so a live session and a
+    replayed one cannot disagree about what an `Agent` call reported.
+    """
     if not isinstance(result, dict) or not result.get("agentId"):
         return {}
     meta = {"agent_id": result["agentId"]}
@@ -435,7 +440,7 @@ def _user_events(entry: dict, image_base: str = "", image_query: str = ""):
                 # client uses it to offer the subagent's transcript, which is
                 # fetched on demand rather than seeded: those transcripts run
                 # larger than the parent they belong to.
-                **_subagent_meta(entry),
+                **subagent_meta(entry.get("toolUseResult")),
             }
         elif kind == "text":
             text = block.get("text", "")
