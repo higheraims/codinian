@@ -26,6 +26,11 @@ STUCK_SECS = 1800  # 30 min without output → stuck
 PANE_LOAD_RETRIES = 10
 PANE_RETRY_MS = 500
 
+# How far a pinch may take a pane's zoom level. Below 0.5 the transcript is
+# unreadable; above 3.0 the composer no longer fits the pane.
+PANE_ZOOM_MIN = 0.5
+PANE_ZOOM_MAX = 3.0
+
 STATUS_CSS = {
     Status.RUNNING: "success",
     Status.IDLE:    "warning",
@@ -51,6 +56,11 @@ SDK_STATUS_CSS = {
 APP_MARK = Path(__file__).parent / "docs" / "art" / "codinian.svg"
 
 _mark_cache: list = []
+
+
+def _clamp_pane_zoom(level: float) -> float:
+    """A zoom level held inside the range a pane stays usable at."""
+    return min(PANE_ZOOM_MAX, max(PANE_ZOOM_MIN, level))
 
 
 def _positive_int(value, fallback: int) -> int:
@@ -749,8 +759,53 @@ class CodinianWindow(Adw.ApplicationWindow):
         # this the pane answers `create` with nothing and the click does
         # nothing, which reads as a broken link.
         webview.connect("create", self._on_pane_create)
+        self._redirect_pinch_to_zoom(webview)
         webview.load_uri(url)
         return webview
+
+    def _redirect_pinch_to_zoom(self, webview: WebKit.WebView) -> None:
+        """Spend a touchpad pinch on the pane's zoom level instead of letting
+        WebKit have it.
+
+        Left alone, WebKit answers a pinch with its own viewport zoom: it scales
+        the rendered page behind a viewport that stays put, so the pane ends up
+        scrolled sideways with the composer off the edge, and the only way back
+        to 1.0 is to pinch out by hand. Nothing else in the window moves like
+        that. The controller sits in the capture phase, which on GTK4 runs
+        before the widget's own gestures, and swallows every touchpad pinch
+        event, so WebKit never sees one. What the gesture drives instead is
+        `zoom-level`, which reflows the page the way Ctrl+= does in a browser.
+
+        Touchscreen pinches are left to WebKit: those arrive as touch events,
+        not as `TOUCHPAD_PINCH`, and on a touchscreen the viewport zoom is the
+        gesture people expect.
+        """
+        # The level the pinch started from, kept across the event stream
+        # because `get_pinch_scale` is cumulative from BEGIN rather than a
+        # per-event delta. None between gestures.
+        start: list = [None]
+
+        def on_event(_controller, event) -> bool:
+            if event.get_event_type() != Gdk.EventType.TOUCHPAD_PINCH:
+                return False
+            phase = event.get_gesture_phase()
+            if phase == Gdk.TouchpadGesturePhase.BEGIN:
+                start[0] = webview.get_zoom_level()
+            elif phase == Gdk.TouchpadGesturePhase.UPDATE and start[0] is not None:
+                webview.set_zoom_level(
+                    _clamp_pane_zoom(start[0] * event.get_pinch_scale())
+                )
+            else:
+                # END keeps whatever the last update set; CANCEL puts it back.
+                if phase == Gdk.TouchpadGesturePhase.CANCEL and start[0] is not None:
+                    webview.set_zoom_level(start[0])
+                start[0] = None
+            return True  # handled, so the pinch stops here
+
+        controller = Gtk.EventControllerLegacy()
+        controller.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        controller.connect("event", on_event)
+        webview.add_controller(controller)
 
     def _on_pane_create(self, webview, navigation_action):
         """Hand a link that asked for a new window to the system browser. The
