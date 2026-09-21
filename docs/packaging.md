@@ -162,6 +162,25 @@ dependency on a package from a repository the user has not added would make
 Codinian uninstallable. dnf skips a Recommends it cannot resolve and installs it
 where it can.
 
+### Which copy a session runs
+
+Two can be present at once: the `claude-code` package's `/usr/bin/claude`, and
+the one inside the SDK if it came from the PyPI wheel. The SDK's own search
+prefers the bundled copy, which is the wrong way round for a packaged install:
+that copy is pinned to whatever version the SDK release was built around, while
+dnf moves `/usr/bin/claude` several times a week.
+
+So Codinian chooses instead and passes the answer as
+`ClaudeAgentOptions(cli_path=...)`. Default is the system install, falling back
+to the bundled copy where there is none, which is who the bundle was put in the
+wheel for. `codinian/claude_cli.py` has the search order and the reasoning;
+Settings > About lists both copies, their versions and the bundled one's size.
+
+An upgrade while the app is running is safe and needs no restart: the running
+process holds the old inode and the next session picks up the new binary. That
+is a property of the RPM path, not of pip, where the library and the binary
+move together.
+
 ## What CI covers
 
 `.github/workflows/packaging.yml`:

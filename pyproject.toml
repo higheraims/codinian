@@ -20,6 +20,15 @@ requires-python = ">=3.12"
 # that declared it would try to compile it. The typelib requirements are in
 # README.md and in the packaging metadata, which is where a package manager can
 # act on them.
+#
+# claude-agent-sdk is listed without a floor, and it is worth knowing what pip
+# does with it. The wheel on PyPI is 317 MB, because it bundles a copy of the
+# `claude` binary; the source distribution is 345 KB and bundles nothing. There
+# is no way to ask for the sdist from here, so `pip install --no-binary
+# claude-agent-sdk` is the form README.md and docs/packaging.md both give, and
+# it is what CI and the RPM build use. Codinian runs the system `claude` by
+# default either way (ISSUE-060), so the bundled copy is 317 MB that never gets
+# opened.
 dependencies = [
     "aiohttp>=3.12.14",
     "claude-agent-sdk",

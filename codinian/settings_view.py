@@ -21,6 +21,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, GObject, Gtk
 
 from . import agent_options
+from . import claude_cli
 from . import config as config_module
 from . import db
 from . import project
@@ -121,6 +122,12 @@ EFFORT_LABELS = {
     "max": "Max — deepest reasoning, slowest",
 }
 
+CLI_SOURCE_LABELS = {
+    "system": "This machine's install",
+    "bundled": "Bundled with the SDK",
+    "custom": "A path you choose",
+}
+
 THINKING_LABELS = {
     agent_options.UNSET: "Default (the CLI decides)",
     "summarized": "Show a summary of the reasoning",
@@ -144,6 +151,42 @@ class ClaudePage(Adw.PreferencesPage):
         super().__init__()
         self._config = config
         self._loading = True
+
+        cli = Adw.PreferencesGroup(
+            title="Claude Code",
+            description="Which claude binary a session runs. The copy inside "
+                        "the SDK never changes: it is whichever version that "
+                        "release was built around, and a new one arrives only "
+                        "when the SDK does. The install on this machine is the "
+                        "one your package manager updates.",
+        )
+        self._cli_source = Adw.ComboRow(
+            title="Binary",
+            model=Gtk.StringList.new(
+                [CLI_SOURCE_LABELS[s] for s in claude_cli.SOURCES]
+            ),
+        )
+        self._cli_source.set_selected(claude_cli.SOURCES.index(claude_cli.source(config)))
+        self._cli_source.connect("notify::selected", self._on_cli_source_changed)
+        cli.add(self._cli_source)
+
+        self._cli_path = Adw.EntryRow(title="Path")
+        self._cli_path.set_text(claude_cli.custom_path(config))
+        self._cli_path.set_show_apply_button(True)
+        self._cli_path.connect("apply", self._on_cli_path_applied)
+        cli.add(self._cli_path)
+
+        # What the rows above add up to right now. "The install on this
+        # machine" does not say which file that is or how old it is, and those
+        # are the two things worth knowing.
+        self._cli_status = Adw.ActionRow(title="In use", subtitle_selectable=True)
+        cli.add(self._cli_status)
+
+        self._cli_problem = Adw.ActionRow(title="")
+        self._cli_problem.add_css_class("error")
+        self._cli_problem.set_visible(False)
+        cli.add(self._cli_problem)
+        self.add(cli)
 
         prompt = Adw.PreferencesGroup(
             title="System prompt",
@@ -302,6 +345,7 @@ class ClaudePage(Adw.PreferencesPage):
 
         self._loading = False
         self._refresh_conflict()
+        self._refresh_cli()
 
     # ------------------------------------------------------------- handlers
 
@@ -313,6 +357,40 @@ class ClaudePage(Adw.PreferencesPage):
         message = agent_options.conflicts(self._config)
         self._conflict.set_title(message or "")
         self._conflict.set_visible(message is not None)
+
+    def _refresh_cli(self) -> None:
+        """Re-read which binary the current settings pick out.
+
+        The version comes from `claude --version` for a real install and from
+        the SDK's own record for the bundled copy, which saves starting a
+        317 MB executable to be told what the file beside it already says."""
+        self._cli_path.set_visible(claude_cli.source(self._config) == "custom")
+        in_use = claude_cli.describe(self._config)["in_use"]
+        if in_use["path"]:
+            version = in_use["version"]
+            self._cli_status.set_subtitle(
+                f"{in_use['path']} ({version})" if version else in_use["path"]
+            )
+        else:
+            self._cli_status.set_subtitle(
+                "Nothing chosen here, so the SDK searches when a session starts."
+            )
+        self._cli_problem.set_title(in_use["problem"] or "")
+        self._cli_problem.set_visible(in_use["problem"] is not None)
+
+    def _on_cli_source_changed(self, combo, _param) -> None:
+        if self._loading:
+            return
+        self._save("claude_cli_source", claude_cli.SOURCES[combo.get_selected()])
+        self._refresh_cli()
+        self.emit("toast", "Applies to the next session you start")
+
+    def _on_cli_path_applied(self, entry) -> None:
+        if self._loading:
+            return
+        self._save("claude_cli_path", entry.get_text().strip())
+        self._refresh_cli()
+        self.emit("toast", "Applies to the next session you start")
 
     def _on_preset_toggled(self, switch, _param) -> None:
         if self._loading:
@@ -386,10 +464,12 @@ class ClaudePage(Adw.PreferencesPage):
 
 
 class AboutPage(Adw.PreferencesPage):
-    """Version, application id, and where the files are.
+    """Versions, application id, and where the files are.
 
     These are the questions asked when something is wrong, and hunting for the
-    config path in a docstring is a poor answer.
+    config path in a docstring is a poor answer. The Claude Code group is here
+    for the same reason: before ISSUE-060 the only way to find out which
+    `claude` a session was running was to read the process tree.
     """
 
     def __init__(self, config: dict):
@@ -400,6 +480,8 @@ class AboutPage(Adw.PreferencesPage):
         group.add(_value_row("Application id", config_module.APP_ID))
         self.add(group)
 
+        self.add(_claude_code_group(config))
+
         files = Adw.PreferencesGroup(
             title="Files",
             description="Selectable, so a path can be copied into a terminal.",
@@ -408,6 +490,52 @@ class AboutPage(Adw.PreferencesPage):
         files.add(_value_row("Projects", str(project.REGISTRY_PATH)))
         files.add(_value_row("Sessions database", str(db.DB_PATH)))
         self.add(files)
+
+
+def _claude_code_group(config: dict) -> Adw.PreferencesGroup:
+    """What is installed, and which of it is running (ISSUE-060).
+
+    Both are listed even when only one exists, so an empty row is an answer
+    rather than a gap.
+    """
+    info = claude_cli.describe(config)
+    group = Adw.PreferencesGroup(
+        title="Claude Code",
+        description="Sessions run one of these. The Claude tab chooses which.",
+    )
+    in_use = info["in_use"]
+    group.add(_value_row("In use", _cli_line(in_use) or "Nothing found"))
+    group.add(_value_row("On this machine",
+                         _cli_line(info["system"]) or "Not installed"))
+
+    bundled = info["bundled"]
+    if bundled["path"]:
+        size = claude_cli.human_bytes(bundled["bytes"])
+        note = "" if bundled["in_use"] else ", not in use"
+        group.add(_value_row("Inside the SDK",
+                             f"{bundled['path']} ({bundled['version']}, {size}{note})"))
+        if not bundled["in_use"]:
+            # The wheel on PyPI carries the CLI; the source distribution does
+            # not. Reinstalling from the sdist is how that space comes back,
+            # and the SDK is pure Python either way.
+            group.add(_value_row(
+                "Reinstall without it",
+                "pip install --user --force-reinstall --no-binary "
+                "claude-agent-sdk claude-agent-sdk"))
+    else:
+        group.add(_value_row("Inside the SDK",
+                             "No copy, which is what the package build and a "
+                             "--no-binary pip install both produce"))
+    return group
+
+
+def _cli_line(entry: dict) -> str:
+    """A path with its version after it, or "" when there is no path."""
+    path = entry.get("path")
+    if not path:
+        return ""
+    version = entry.get("version")
+    return f"{path} ({version})" if version else path
 
 
 def _value_row(title: str, value: str) -> Adw.ActionRow:

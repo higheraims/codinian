@@ -80,6 +80,12 @@ DEFAULTS = {
     # Whether assistant text appears as it is written (ISSUE-033). Text only;
     # thinking and tool arguments are not streamed.
     "stream_partial_text": True,
+    # Which `claude` binary a session runs (ISSUE-060). "system" prefers the
+    # install a package manager keeps current and falls back to the copy inside
+    # the SDK; "bundled" is the other way round; "custom" runs
+    # `claude_cli_path` and nothing else. See claude_cli.py.
+    "claude_cli_source": "system",
+    "claude_cli_path": "",
 }
 
 

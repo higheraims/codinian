@@ -102,6 +102,13 @@ python3 -m codinian
 its own copy of the `claude` binary. Built from the source distribution instead
 it is 345 KB, and it uses the `claude` already on your PATH.
 
+If you install the full wheel anyway, that bundled copy is only a fallback.
+Codinian runs the `claude` on this machine by default, because that is the one
+your package manager keeps current, and the bundled one is frozen at whatever
+version the SDK release was built around. Settings > Claude chooses between
+them or takes a path of your own, and Settings > About says which is running
+and what version it is.
+
 To add a desktop launcher and icon for the current user, pointing at this
 checkout:
 
@@ -123,7 +130,7 @@ pip install --user pytest    # if not already present
 python3 -m pytest
 ```
 
-559 tests, about three seconds, no network and no display. They cover the parts
+620 tests, about four seconds, no network and no display. They cover the parts
 of the app that do not import `gi`: the issue format, the project registry and
 its settings, path containment, git, the config and session database, the event
 bus, the permission-mode tables, transcript reading and search, and the

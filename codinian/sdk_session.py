@@ -55,6 +55,7 @@ from claude_agent_sdk import (
 )
 
 from . import agent_options
+from . import claude_cli
 from . import claude_history
 from . import config as config_module
 from . import images
@@ -275,6 +276,7 @@ class SdkSession:
 
     async def start(self, initial_prompt: str | None = None) -> None:
         self._loop = asyncio.get_running_loop()
+        config = config_module.load()
         options = ClaudeAgentOptions(
             cwd=self._workdir,
             permission_mode=self._permission_mode,
@@ -298,7 +300,11 @@ class SdkSession:
             # user's settings (ISSUE-032). Read at start rather than held on
             # the session, so a change applies to the next session without a
             # restart. Only settings actually chosen appear in the mapping.
-            **agent_options.options_kwargs(config_module.load()),
+            **agent_options.options_kwargs(config),
+            # Which `claude` to run (ISSUE-060). Absent when nothing was found,
+            # which leaves the SDK to search and to raise its own not-found
+            # error, the one that names the installer for this platform.
+            **claude_cli.options_kwargs(config),
         )
         self._emit_status(SessionStatus.INITIALIZING)
         self._client = ClaudeSDKClient(options=options)
