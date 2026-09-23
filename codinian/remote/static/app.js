@@ -1862,17 +1862,17 @@
     return CONTEXT_FULL_FALLBACK;
   }
 
-  // How full the context window is, read from the CLI after every turn
-  // (ISSUE-065). It sits beside the plan windows because it answers the same
-  // shape of question: how much room is left before something outside the
-  // user's control happens to this conversation.
+  // How full the context window is, read from the CLI as a turn runs and
+  // again when it ends (ISSUE-065, ISSUE-068). It sits beside the plan windows
+  // because it answers the same shape of question: how much room is left
+  // before something outside the user's control happens to this conversation.
   function renderContextUsage() {
     if (!contextUsageEl) return;
     const meta = state.currentId ? state.sessionsMeta.get(state.currentId) : null;
     const ev = state.context;
     const pct = ev && typeof ev.percentage === 'number' ? ev.percentage : null;
     contextUsageEl.innerHTML = '';
-    // Nothing to show before the first turn ends, on a terminal session, or
+    // Nothing to show before the first reading, on a terminal session, or
     // when autocompact is off: with nothing going to compact the conversation,
     // the figure is a number for its own sake.
     if (pct === null || !meta || meta.kind !== 'sdk' || !ev.auto_compact) {
@@ -2844,9 +2844,10 @@
       }
 
       case 'context_usage': {
-        // Footer only, like plan_usage below. A reading per turn drawn into
-        // the timeline would put a card between every exchange saying a number
-        // that is already on the strip underneath.
+        // Footer only, like plan_usage below. Drawn into the timeline these
+        // would put a card between every exchange, and since ISSUE-068 several
+        // within one, all saying a number that is already on the strip
+        // underneath.
         break;
       }
 

@@ -951,6 +951,32 @@
       text: 'Picking up where the last session left off. Checking which API pages still reference the removed v1 endpoints.',
     });
 
+    // The window filling inside one turn, with a tool call between the
+    // readings and no result ending it. This is what ISSUE-068 changed: the
+    // figure used to arrive once, on the result, so the climb to the line was
+    // never drawn and the turn that crossed it was compacted mid-flight.
+    await wait(400);
+    director.emitEvent(id, {
+      type: 'context_usage',
+      total_tokens: 148000,
+      max_tokens: 200000,
+      percentage: 74,
+      auto_compact: true,
+      threshold: 184000,
+    });
+
+    await wait(500);
+    const readId = uid('tu_');
+    director.emitEvent(id, { type: 'tool_use', tool_use_id: readId, name: 'Read', input: { file_path: 'docs/api/webhooks.md' } });
+
+    await wait(600);
+    director.emitEvent(id, {
+      type: 'tool_result',
+      tool_use_id: readId,
+      is_error: false,
+      content: '# Webhooks\n\nEvents are delivered to /v1/hooks with a signed header.',
+    });
+
     // A nearly full window, then the boundary, then an empty one. Three
     // events rather than one because the interesting behaviour is the
     // sequence: the footer goes red, the boundary clears the reading, and the

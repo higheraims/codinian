@@ -17,6 +17,8 @@ import functools
 import pytest
 
 from codinian import sdk_session
+from claude_agent_sdk import SystemMessage
+
 from codinian.sdk_session import SdkSession
 from codinian.session import Session, SessionManager
 
@@ -434,3 +436,188 @@ def test_unreadable_records_cost_the_card_its_list_but_not_the_card(manager,
     seen = emitted(session)
     assert session._report_limit_block() is True
     assert seen[0][1]["subagents"] == []
+
+
+# ------------------------------------------------- reading the context window
+
+class FakeContextClient:
+    """Answers `get_context_usage` with whatever it was handed, and counts how
+    many times it was asked."""
+
+    def __init__(self, *answers):
+        self.answers = list(answers)
+        self.asks = 0
+
+    async def get_context_usage(self):
+        self.asks += 1
+        return self.answers[min(self.asks - 1, len(self.answers) - 1)]
+
+
+def usage(percentage, total=50_000, auto=True, threshold=967_000):
+    return {"totalTokens": total, "maxTokens": 1_000_000,
+            "percentage": percentage, "isAutoCompactEnabled": auto,
+            "autoCompactThreshold": threshold}
+
+
+def context_session(manager, *answers):
+    session = make_session(manager)
+    session._loop = asyncio.get_running_loop()
+    session._client = FakeContextClient(*answers)
+    return session
+
+
+def readings(manager):
+    return [e for e in manager.get_events("s1") if e["type"] == "context_usage"]
+
+
+@async_test
+async def test_a_reading_is_taken_during_a_turn_not_only_at_the_end_of_one():
+    # The whole of ISSUE-068: a turn long enough to compact in the middle of
+    # itself used to reach its end before anyone heard a figure.
+    manager = SessionManager()
+    manager.add(Session(id="s1", kind="sdk"))
+    session = context_session(manager, usage(2))
+
+    await session._read_context_usage()
+
+    assert session._client.asks == 1
+    assert readings(manager)[0]["percentage"] == 2
+
+
+@async_test
+async def test_a_second_reading_inside_the_interval_does_not_ask_again():
+    # A turn can emit hundreds of messages in a second and the loop offers a
+    # reading on each one.
+    manager = SessionManager()
+    manager.add(Session(id="s1", kind="sdk"))
+    session = context_session(manager, usage(2))
+
+    for _ in range(50):
+        await session._read_context_usage()
+
+    assert session._client.asks == 1
+
+
+@async_test
+async def test_the_end_of_a_turn_reads_however_recent_the_last_one_was():
+    # It is the figure the session rests at until someone types again.
+    manager = SessionManager()
+    manager.add(Session(id="s1", kind="sdk"))
+    session = context_session(manager, usage(2), usage(9))
+
+    await session._read_context_usage()
+    await session._read_context_usage(force=True)
+
+    assert session._client.asks == 2
+    assert [r["percentage"] for r in readings(manager)] == [2, 9]
+
+
+@async_test
+async def test_a_reading_that_would_draw_the_same_footer_is_not_stored():
+    # Every event is kept for the life of the session and re-sent to every
+    # client that subscribes, so an hours-long turn must not leave one every
+    # fifteen seconds.
+    manager = SessionManager()
+    manager.add(Session(id="s1", kind="sdk"))
+    session = context_session(manager, usage(2, total=50_000),
+                              usage(2, total=53_000))
+
+    await session._read_context_usage(force=True)
+    await session._read_context_usage(force=True)
+
+    assert session._client.asks == 2
+    assert len(readings(manager)) == 1
+
+
+@async_test
+async def test_a_reading_that_moves_the_percentage_is_stored():
+    manager = SessionManager()
+    manager.add(Session(id="s1", kind="sdk"))
+    session = context_session(manager, usage(2), usage(3))
+
+    await session._read_context_usage(force=True)
+    await session._read_context_usage(force=True)
+
+    assert [r["percentage"] for r in readings(manager)] == [2, 3]
+
+
+def test_the_display_key_ignores_a_token_count_and_notices_a_rounding():
+    key = sdk_session._context_display_key
+    assert key({"percentage": 2.1, "max_tokens": 1}) == key({"percentage": 2.4,
+                                                             "max_tokens": 1})
+    assert key({"percentage": 2.4, "max_tokens": 1}) != key({"percentage": 2.6,
+                                                             "max_tokens": 1})
+    # A model change moves the window without moving the percentage.
+    assert key({"percentage": 2, "max_tokens": 1_000_000}) != key(
+        {"percentage": 2, "max_tokens": 200_000})
+
+
+@async_test
+async def test_a_compaction_boundary_lets_the_next_reading_through():
+    # Clients clear the footer on a boundary, so a reading suppressed as a
+    # repeat would leave it empty for as long as the percentage held. Driven
+    # through the real message handler rather than by clearing the two fields,
+    # which would pass whether or not the boundary clears them.
+    manager = SessionManager()
+    manager.add(Session(id="s1", kind="sdk"))
+    session = context_session(manager, usage(2))
+
+    await session._read_context_usage(force=True)
+    session._handle_message(SystemMessage(subtype="compact_boundary", data={}))
+    await session._read_context_usage()
+
+    assert len(readings(manager)) == 2
+
+
+@async_test
+async def test_a_compaction_boundary_makes_the_session_askable_again():
+    # Once per cycle rather than once per turn over the line (ISSUE-065).
+    manager = SessionManager()
+    manager.add(Session(id="s1", kind="sdk"))
+    session = context_session(manager, usage(2))
+    session._flush_asked = True
+
+    session._handle_message(SystemMessage(subtype="compact_boundary", data={}))
+
+    assert session._flush_asked is False
+
+
+@async_test
+async def test_the_flush_prompt_can_now_fire_in_the_middle_of_a_turn(monkeypatch):
+    # The reason ISSUE-068 is a bug rather than a display nicety. The prompt
+    # used to get its only chance on the result that ends a turn, so a turn
+    # that crossed the threshold in the middle of itself was compacted without
+    # ever being asked.
+    manager = SessionManager()
+    manager.add(Session(id="s1", kind="sdk"))
+    session = context_session(manager, usage(97))
+    monkeypatch.setattr(sdk_session.config_module, "load",
+                        lambda: {"context_flush_inject": True,
+                                 "context_flush_percent": 90})
+    sent = []
+    monkeypatch.setattr(session, "send",
+                        lambda text, source="operator": sent.append(source) or True)
+
+    await session._read_context_usage()
+
+    assert sent == ["injected"]
+    assert session._flush_asked is True
+
+
+@async_test
+async def test_a_suppressed_reading_is_still_put_to_the_flush_check(monkeypatch):
+    # What the check decides is whether to interrupt a turn about to lose its
+    # context, which does not depend on the footer having changed. The two
+    # readings here round to the same percentage, so only the first is stored.
+    manager = SessionManager()
+    manager.add(Session(id="s1", kind="sdk"))
+    session = context_session(manager, usage(97, total=970_000),
+                              usage(97, total=971_000))
+    asked = []
+    monkeypatch.setattr(session, "_maybe_ask_for_a_flush", asked.append)
+
+    await session._read_context_usage(force=True)
+    await session._read_context_usage(force=True)
+
+    assert len(readings(manager)) == 1
+    assert len(asked) == 2

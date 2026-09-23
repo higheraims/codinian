@@ -148,6 +148,28 @@ EDIT_TOOLS = frozenset({"Edit", "MultiEdit", "Write", "NotebookEdit"})
 # turn, and this is the value at which that happens.
 HOOK_TIMEOUT_SECONDS = 24 * 60 * 60
 
+# How long a reading of the context window stays good enough to skip taking
+# another (ISSUE-068).
+#
+# The reading used to be taken once, on the result that ends a turn, so a turn
+# long enough to compact in the middle of itself was compacted against a footer
+# reporting the figure from before it started, and the flush prompt never fired
+# because its only chance to fire was that same result. The session that found
+# this ran three and a half hours and 57 tool calls on one turn, with one
+# reading taken in its first minute.
+#
+# So the loop asks as messages arrive instead, and this is what stops it asking
+# on every one of them. Fifteen seconds because the number it feeds is read by
+# a person, who cannot use it faster than that, and because the gap it leaves
+# is the window in which the CLI can cross its threshold unseen: a turn would
+# have to add the last few percent of a context window inside fifteen seconds
+# to get past it.
+#
+# A gate on elapsed time rather than a timer task, so an idle session asks
+# nothing at all. There is no clock here except messages arriving, and a
+# session with no turn in flight has none.
+CONTEXT_READ_INTERVAL = 15.0
+
 # How many sent messages to keep the text of, for naming the ones a stop throws
 # away. Only messages still in the CLI's queue can be thrown, and that queue is
 # what one person can type during one turn, so this is generous rather than
@@ -177,6 +199,19 @@ def _one_line(text: str) -> str:
     if len(flat) > CANCELLED_QUOTE_CHARS:
         flat = flat[:CANCELLED_QUOTE_CHARS - 1].rstrip() + "…"
     return f'"{flat}"'
+
+
+def _context_display_key(event: dict) -> tuple:
+    """What a client would draw from a context reading. Two readings with the
+    same key put the same footer on the screen, so only the first is kept
+    (ISSUE-068)."""
+    pct = event.get("percentage")
+    return (
+        round(pct) if isinstance(pct, (int, float)) else None,
+        event.get("auto_compact"),
+        event.get("threshold"),
+        event.get("max_tokens"),
+    )
 
 
 def _model_usage_totals(model_usage) -> dict | None:
@@ -276,6 +311,13 @@ class SdkSession:
         # session gets asked once per cycle rather than once per turn over the
         # threshold (ISSUE-065).
         self._flush_asked = False
+        # When the context window was last measured, on the event loop's clock.
+        # Zero rather than None so the first message of the first turn asks
+        # (ISSUE-068).
+        self._context_read_at = 0.0
+        # The last reading a client was actually shown, so readings that would
+        # draw the same footer are not stored and re-sent.
+        self._last_context_shown: tuple | None = None
 
     # ------------------------------------------------------------- lifecycle
 
@@ -447,6 +489,12 @@ class SdkSession:
                         "message": f"could not render one message: {exc}"}})
                 if isinstance(msg, ResultMessage):
                     self._end_turn()
+                    await self._read_context_usage(force=True)
+                else:
+                    # Mid-turn, so a turn that fills the window does not reach
+                    # its end before anyone hears about it (ISSUE-068). Rate
+                    # limited by the clock, not by the message, because a turn
+                    # can emit hundreds of these in a second.
                     await self._read_context_usage()
         except asyncio.CancelledError:
             raise
@@ -1063,7 +1111,7 @@ class SdkSession:
                         "reason": reason, "decided_by": decided_by})
         return True
 
-    async def _read_context_usage(self) -> None:
+    async def _read_context_usage(self, force: bool = False) -> None:
         """Ask how full the context window is, and say so (ISSUE-065).
 
         This asks, where `_capture_plan_usage` below refuses to, and the
@@ -1071,10 +1119,33 @@ class SdkSession:
         very limit it reports. This is a control request handled by `_query`,
         the same family as the `get_server_info()` call in `start`, so it
         costs no turn and no tokens.
+
+        Called on every message the loop reads and on the result that ends a
+        turn, which is what `force` distinguishes: a result is worth a reading
+        however recent the last one was, since it is the figure the session
+        rests at until someone types again. Everything else waits out
+        `CONTEXT_READ_INTERVAL` (ISSUE-068).
+
+        Awaited in the message loop rather than spawned beside it, so two of
+        these can never be in flight at once. The cost is that a CLI which
+        accepted the request and never answered holds the transcript up for as
+        long as it takes to give up, which is the SDK's own 60 seconds. No
+        timeout is imposed on top of that: `_send_control_request` drops its
+        entry from `pending_control_responses` when its own `fail_after` fires,
+        and cancelling it from outside skips that cleanup and leaks the entry
+        instead. The same await has ended every turn since ISSUE-065 without
+        stalling one.
         """
         client = self._client
         if client is None or self._closed:
             return
+        now = self._loop.time() if self._loop else 0.0
+        if not force and now - self._context_read_at < CONTEXT_READ_INTERVAL:
+            return
+        # Stamped before the request rather than after the answer, so the
+        # interval measures request to request. Stamping after would add
+        # however long the CLI took to the gap before the next one.
+        self._context_read_at = now
         try:
             usage = await client.get_context_usage()
         except Exception:
@@ -1084,13 +1155,28 @@ class SdkSession:
             return
         if not isinstance(usage, dict):
             return
-        self._emit("context_usage", {
+        event = {
             "total_tokens": usage.get("totalTokens"),
             "max_tokens": usage.get("maxTokens"),
             "percentage": usage.get("percentage"),
             "auto_compact": bool(usage.get("isAutoCompactEnabled")),
             "threshold": usage.get("autoCompactThreshold"),
-        })
+        }
+        # Every event emitted is stored for the life of the session and sent
+        # again to every client that subscribes, so a reading nobody could tell
+        # from the one before it is not worth keeping. The footer draws the
+        # percentage rounded to a whole number, so that is what decides: a turn
+        # that runs for hours leaves one event per point it climbed rather than
+        # one every fifteen seconds. The exact token count in the tooltip can
+        # trail by up to a percent of the window as a result, which is the
+        # trade (ISSUE-068).
+        key = _context_display_key(event)
+        if key != self._last_context_shown:
+            self._last_context_shown = key
+            self._emit("context_usage", event)
+        # Asked on every reading, including one too close to the last to emit.
+        # What it decides is whether to interrupt a turn that is about to lose
+        # its context, and that does not depend on the footer having changed.
         self._maybe_ask_for_a_flush(usage)
 
     def _maybe_ask_for_a_flush(self, usage: dict) -> None:
@@ -1184,6 +1270,12 @@ class SdkSession:
                 # The window just emptied, so the next time it fills is a new
                 # occasion to ask (ISSUE-065).
                 self._flush_asked = False
+                # Clients clear the footer on a boundary, so the next reading
+                # has to be taken and emitted rather than skipped as a repeat
+                # of one describing a conversation that no longer exists
+                # (ISSUE-068).
+                self._last_context_shown = None
+                self._context_read_at = 0.0
             self._emit("system", {"subtype": getattr(msg, "subtype", None), "data": data})
         elif isinstance(msg, ResultMessage):
             result_text = getattr(msg, "result", None)

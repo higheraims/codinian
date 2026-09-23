@@ -1,7 +1,7 @@
 ---
 id: ISSUE-068
 title: The context reading only moves at a turn boundary, so a long turn can compact without warning
-status: open
+status: done
 type: bug
 area: sdk
 created: 2026-09-23
@@ -73,6 +73,72 @@ the one from before that turn started.
   rather than only the `compact_boundary` after the fact. If it does, that is a
   better trigger than any poll.
 
+- **The question that had to be answered first: does the CLI recompute this
+  mid-turn at all?** If `get_context_usage` only measured at a turn boundary,
+  polling would have returned a stale number more often rather than a live one,
+  and the whole ticket would have been about the CLI rather than about us.
+
+  It recomputes. A throwaway client on Haiku 4.5, asking on every message of a
+  two-turn conversation:
+
+  ```
+  turn1 msg  1  18440  9%     turn2 msg  1  33080  17%
+  turn1 msg  2  21863  11%    turn2 msg  3  33230  17%
+  turn1 msg 34  33080  17%    turn2 msg 14  35414  18%
+  turn1 msg 89  33080  17%    turn2 msg 37  35414  18%
+  ```
+
+  It tracks the last request the model made, so it steps when a tool result
+  goes back and holds between. Turn one grew 14,640 tokens from its second
+  message to its end, none of which the footer could show. The request also
+  answers while the turn is generating: 88 of them in a row cost nothing
+  visible.
+
+- **What the poll hangs on is messages, not a timer.** `CONTEXT_READ_INTERVAL`
+  is fifteen seconds of elapsed time checked when a message arrives, so an idle
+  session asks nothing and there is no task to cancel on close. The result that
+  ends a turn passes `force=True` and skips the gate, since that figure is what
+  the session rests at until someone types again.
+
+- **Readings are deduplicated by what the footer draws**, which the ticket did
+  not anticipate and which matters more than the interval. Every event is kept
+  for the life of the session and re-sent to every client that subscribes, so
+  fifteen-second polling on a three-hour turn would have added 720 events. The
+  key is the rounded percentage plus the values that change the strip's shape,
+  so a long turn leaves one event per point it climbed. The exact token count
+  in the tooltip can trail by up to a percent of the window as a result.
+
+  The flush check runs on every reading, including a suppressed one. Whether to
+  interrupt a turn that is about to lose its context does not depend on the
+  footer having changed.
+
+- **No timeout is wrapped around the request.** `_send_control_request` bounds
+  itself at 60 seconds and drops its entry from `pending_control_responses`
+  when its own `fail_after` fires. Cancelling it from outside raises
+  `CancelledError` instead, which skips that cleanup and leaks the entry, so an
+  `asyncio.wait_for` here would trade a rare stall for a slow leak.
+
+- **Verified on the live path and then at the page.** A real `SdkSession`
+  driven against the CLI emitted a reading at seq 4 carrying 17,300 tokens and
+  another at seq 19, the turn's result, carrying 34,660. Only the second would
+  have existed before. The mock gained the climb inside one turn, 74% to a tool
+  call to 88%, and the page rendered in headless Chromium walks it:
+
+  ```
+  1.4s  context-usage           Context 74%   148,000 of 200,000 tokens
+  3.0s  context-usage is-near   Context 88%   176,000 of 200,000 tokens
+  3.7s  hidden                                (compact_boundary)
+  6.3s  context-usage           Context 12%    24,500 of 200,000 tokens
+  ```
+
+- ISSUE-065 shipped with a mock case and no Python test, which is why this went
+  unnoticed. The eight tests added here cover the gate, the force at a turn
+  boundary, the dedupe, the boundary reset, and the flush firing mid-turn.
+
 ## Resolution
 
-
+The reading is taken as messages arrive, gated to one every fifteen seconds,
+and forced on the result that ends a turn. Readings that would draw the same
+footer are dropped rather than stored, so a long turn leaves one event per
+percentage point instead of one per interval. A compaction boundary clears both
+the interval and the last-shown reading, since clients clear the footer there.
