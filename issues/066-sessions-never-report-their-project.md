@@ -54,6 +54,29 @@ then the page it was pressed on never shows it.
     therefore `project_id()` do run. The key is present in the response with a
     null value, which rules out the field being dropped somewhere later.
 
+- **`project_id` is not the only null, which is the best lead in here.** The
+  same three sessions report `sdk_session_id: null` from the API while the
+  database has an id for every one of them:
+
+  ```
+  id         api sdk_session_id   db sdk_session_id
+  bf80db73   None                 e680c189-54a0-4d43-b30e-56662d299f0e
+  64821ea5   None                 c46cb6c1-7571-4f7b-9cf0-11bec84d1c80
+  f2664af9   None                 6965a686-8ab2-4631-b4c2-eae54ae2bbdc
+  ```
+
+  That is contradictory on its face. `SessionManager.set_sdk_session_id` writes
+  `self._sessions[id].sdk_session_id` and `Session.meta()` reads
+  `self.sdk_session_id`: the same attribute on the same object. The database row
+  is written by `_persist` from that same object. So the object the API reads
+  and the object the database was written from disagree about a field neither
+  path computes.
+
+  Two fields, both null, both on `meta()`, one of them provably non-null at the
+  moment it was persisted. Whatever explains that explains `project_id` too, and
+  it is more likely to be about **which objects the manager is serving** than
+  about the project resolver, which works in isolation.
+
 - **Start here tomorrow: restart the app and ask again.** The instance measured
   above had been up since 2026-09-22 11:58 and could not be restarted, because
   work was going on in it. If a fresh instance answers correctly, this is about
