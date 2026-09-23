@@ -316,6 +316,8 @@ class CodinianWindow(Adw.ApplicationWindow):
         self._toasts.set_child(split)
         self.set_content(self._toasts)
 
+        self._install_zoom_shortcuts()
+
     def _build_sidebar(self) -> Adw.NavigationPage:
         _install_sidebar_css()
         toolbar = Adw.ToolbarView()
@@ -945,6 +947,44 @@ class CodinianWindow(Adw.ApplicationWindow):
         controller.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
         controller.connect("event", on_event)
         webview.add_controller(controller)
+
+    # Ctrl and the key a browser uses for the same thing, plus the keypad
+    # twins and the shifted `+`, since `<Ctrl>equal` is what an unshifted press
+    # actually delivers and `<Ctrl>plus` is what a shifted one does
+    # (ISSUE-070).
+    _ZOOM_ACCELS = {
+        "zoom-in": ["<Ctrl>equal", "<Ctrl>plus", "<Ctrl>KP_Add"],
+        "zoom-out": ["<Ctrl>minus", "<Ctrl>KP_Subtract"],
+        "zoom-reset": ["<Ctrl>0", "<Ctrl>KP_0"],
+    }
+
+    def _install_zoom_shortcuts(self) -> None:
+        """Keyboard companions to the pinch, acting on the same stored size.
+
+        On the window rather than the application: they act on this window's
+        panes, and `win.` is the prefix a `Gtk.ApplicationWindow` already
+        provides as a `Gio.ActionMap`.
+        """
+        app = self.get_application()
+        for name, accels in self._ZOOM_ACCELS.items():
+            action = Gio.SimpleAction.new(name, None)
+            action.connect("activate", self._on_zoom_action, name)
+            self.add_action(action)
+            if app is not None:
+                app.set_accels_for_action(f"win.{name}", accels)
+
+    def _on_zoom_action(self, _action, _param, name: str) -> None:
+        if name == "zoom-reset":
+            level = 1.0
+        else:
+            step = config_module.PANE_ZOOM_STEP
+            level = config_module.pane_zoom(self._config) + (
+                step if name == "zoom-in" else -step)
+        self._apply_pane_zoom(level)
+        self._save_pane_zoom()
+        # The Settings row is showing the old number if it happens to be open.
+        if self._settings_view is not None:
+            self._settings_view.refresh_pane_zoom()
 
     def _panes(self):
         """Every WebKitGTK pane the window holds. The Settings pane is not one

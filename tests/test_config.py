@@ -146,3 +146,23 @@ def test_a_stored_size_outside_the_range_is_clamped_on_the_way_out(value, expect
 
 def test_the_default_config_carries_a_normal_size():
     assert config.DEFAULTS["pane_zoom"] == 1.0
+
+
+def test_a_size_is_rounded_to_a_whole_percent():
+    # Both ways of setting this accumulate. Three presses of Ctrl+= is
+    # 1.0 + 0.1 + 0.1 + 0.1, which is 1.3000000000000003 in binary floating
+    # point and went into the config file that way.
+    assert config.clamp_pane_zoom(1.0 + 0.1 + 0.1 + 0.1) == 1.3
+    assert config.clamp_pane_zoom(1.23456) == 1.23
+
+
+def test_rounding_cannot_push_a_size_outside_the_range():
+    # Rounded after the clamp, so the bounds are values it can actually hold.
+    assert config.clamp_pane_zoom(config.PANE_ZOOM_MAX) == config.PANE_ZOOM_MAX
+    assert config.clamp_pane_zoom(config.PANE_ZOOM_MIN) == config.PANE_ZOOM_MIN
+
+
+def test_the_keyboard_step_is_a_multiple_of_the_settings_step():
+    # A size reached with Ctrl+= has to be one the Settings row can also show,
+    # or the two controls disagree about where they are.
+    assert round(config.PANE_ZOOM_STEP * 100) % 5 == 0

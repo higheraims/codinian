@@ -386,3 +386,101 @@ def test_both_ways_a_pinch_can_finish_are_treated_as_settled(phase):
 def test_a_pinch_still_in_progress_is_not_settled(phase):
     from gi.repository import Gdk
     assert getattr(Gdk.TouchpadGesturePhase, phase) not in window._PINCH_SETTLED
+
+
+# ------------------------------------------------- Ctrl+= and Ctrl+- (070)
+
+def keyboard_zoomable(start=1.0, settings=None):
+    fake = zoomable(config={"pane_zoom": start})
+    fake._settings_view = settings
+    fake.saves = 0
+    fake._save_pane_zoom = lambda: setattr(fake, "saves", fake.saves + 1)
+    fake._apply_pane_zoom = lambda level: CodinianWindow._apply_pane_zoom(fake, level)
+    return fake
+
+
+def press(fake, name):
+    CodinianWindow._on_zoom_action(fake, None, None, name)
+    return fake._config["pane_zoom"]
+
+
+def test_zooming_in_steps_up_and_out_steps_down():
+    fake = keyboard_zoomable()
+    assert press(fake, "zoom-in") == pytest.approx(1.1)
+    assert press(fake, "zoom-in") == pytest.approx(1.2)
+    assert press(fake, "zoom-out") == pytest.approx(1.1)
+
+
+def test_a_keyboard_step_lands_on_a_size_the_settings_row_can_show():
+    # The row steps in fives, so a size reached by keyboard has to be a
+    # multiple of five or the two controls disagree about where they are.
+    fake = keyboard_zoomable()
+    for _ in range(4):
+        press(fake, "zoom-in")
+    assert round(fake._config["pane_zoom"] * 100) % 5 == 0
+
+
+def test_resetting_goes_to_normal_from_either_direction():
+    assert press(keyboard_zoomable(start=2.5), "zoom-reset") == 1.0
+    assert press(keyboard_zoomable(start=0.6), "zoom-reset") == 1.0
+
+
+def test_zooming_in_at_the_ceiling_stays_at_the_ceiling():
+    # Holding the key down must not walk the stored number past the range and
+    # leave it needing several presses to come back.
+    fake = keyboard_zoomable(start=config.PANE_ZOOM_MAX)
+    for _ in range(5):
+        press(fake, "zoom-in")
+    assert fake._config["pane_zoom"] == config.PANE_ZOOM_MAX
+
+
+def test_zooming_out_at_the_floor_stays_at_the_floor():
+    fake = keyboard_zoomable(start=config.PANE_ZOOM_MIN)
+    for _ in range(5):
+        press(fake, "zoom-out")
+    assert fake._config["pane_zoom"] == config.PANE_ZOOM_MIN
+
+
+def test_a_keyboard_zoom_reaches_every_pane():
+    fake = keyboard_zoomable()
+    press(fake, "zoom-in")
+    assert all(p.level == pytest.approx(1.1)
+               for p in CodinianWindow._panes(fake))
+
+
+def test_every_keyboard_zoom_is_written_out():
+    # Unlike a pinch, which saves once when the gesture settles: a press is
+    # already one event, and the next one may be minutes away.
+    fake = keyboard_zoomable()
+    press(fake, "zoom-in")
+    press(fake, "zoom-out")
+    assert fake.saves == 2
+
+
+def test_the_settings_row_is_told_when_a_shortcut_moves_the_size():
+    # Otherwise a Settings page left open goes on showing the old number.
+    told = []
+    fake = keyboard_zoomable(settings=types.SimpleNamespace(
+        refresh_pane_zoom=lambda: told.append(True)))
+    press(fake, "zoom-in")
+    assert told == [True]
+
+
+def test_a_shortcut_works_with_settings_never_opened():
+    # _settings_view is None until Settings is opened for the first time.
+    fake = keyboard_zoomable(settings=None)
+    assert press(fake, "zoom-in") == pytest.approx(1.1)
+
+
+def test_every_zoom_action_has_an_accelerator():
+    accels = CodinianWindow._ZOOM_ACCELS
+    assert set(accels) == {"zoom-in", "zoom-out", "zoom-reset"}
+    assert all(a for a in accels.values())
+
+
+def test_the_shifted_and_keypad_spellings_are_bound_too():
+    # <Ctrl>equal is what an unshifted press delivers and <Ctrl>plus what a
+    # shifted one does, and binding only one of them loses half the keyboards.
+    accels = CodinianWindow._ZOOM_ACCELS
+    assert {"<Ctrl>equal", "<Ctrl>plus", "<Ctrl>KP_Add"} <= set(accels["zoom-in"])
+    assert {"<Ctrl>minus", "<Ctrl>KP_Subtract"} <= set(accels["zoom-out"])

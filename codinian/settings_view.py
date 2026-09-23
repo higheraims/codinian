@@ -128,6 +128,15 @@ class GeneralPage(Adw.PreferencesPage):
         self.emit("theme-changed")
         self.emit("toast", f"Theme set to {THEME_LABELS[value].lower()}")
 
+    def refresh_pane_zoom(self) -> None:
+        """Put the stored size back in the row without writing it out again.
+        `_loading` is what stops the handler treating this as a click."""
+        self._loading = True
+        try:
+            self._pane_zoom.set_value(round(config_module.pane_zoom(self._config) * 100))
+        finally:
+            self._loading = False
+
     def _on_pane_zoom_changed(self, row, _param) -> None:
         if self._loading:
             return
@@ -598,7 +607,7 @@ class SettingsView(Gtk.Box):
 
         self._stack = Adw.ViewStack()
 
-        general = GeneralPage(config)
+        general = self._general = GeneralPage(config)
         general.connect("toast", lambda _p, m: self.emit("toast", m))
         general.connect("theme-changed", lambda _p: self.emit("theme-changed"))
         general.connect("pane-zoom-changed",
@@ -632,6 +641,11 @@ class SettingsView(Gtk.Box):
     def show_tab(self, name: str) -> None:
         if self._stack.get_child_by_name(name) is not None:
             self._stack.set_visible_child_name(name)
+
+    def refresh_pane_zoom(self) -> None:
+        """Re-read the pane text size, for when something outside this page
+        changed it: a pinch on a pane, or Ctrl+= (ISSUE-070)."""
+        self._general.refresh_pane_zoom()
 
     def refresh_remote(self) -> None:
         """Re-read what the Remote access tab shows. The tailnet link comes from

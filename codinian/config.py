@@ -40,10 +40,25 @@ ALL_INTERFACES = "0.0.0.0"
 PANE_ZOOM_MIN = 0.5
 PANE_ZOOM_MAX = 3.0
 
+# What one press of Ctrl+= or Ctrl+- moves it by (ISSUE-070). Ten points
+# rather than the five the Settings row steps in, because reaching a size worth
+# having should take a few presses and not a dozen. It is a multiple of five,
+# so a size arrived at by keyboard still lands on a value that row can show.
+PANE_ZOOM_STEP = 0.1
+
 
 def clamp_pane_zoom(level: float) -> float:
-    """A zoom level held inside the range a pane stays usable at."""
-    return min(PANE_ZOOM_MAX, max(PANE_ZOOM_MIN, level))
+    """A zoom level held inside the range a pane stays usable at, and rounded
+    to a whole percent.
+
+    The rounding is not cosmetic. Both ways of setting this accumulate: three
+    presses of Ctrl+= is 1.0 + 0.1 + 0.1 + 0.1, which in binary floating point
+    is 1.3000000000000003 and goes into the config file that way. A pinch
+    multiplies instead and lands on numbers no less arbitrary. One percent is
+    finer than anyone can see in a pane and is the step the Settings row counts
+    in, so nothing is lost by snapping to it.
+    """
+    return round(min(PANE_ZOOM_MAX, max(PANE_ZOOM_MIN, level)), 2)
 
 
 def pane_zoom(config: dict) -> float:
