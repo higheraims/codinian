@@ -1,7 +1,7 @@
 %global appid net.higheraims.codinian
 
 Name:           codinian
-Version:        0.2.0
+Version:        0.3.0
 Release:        1%{?dist}
 Summary:        Run and supervise Claude Agent SDK sessions
 
@@ -90,5 +90,17 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/%{appid}.metai
 %{_datadir}/icons/hicolor/scalable/apps/%{appid}.svg
 
 %changelog
+* Wed Sep 23 2026 higheraims <122185704+higheraims@users.noreply.github.com> - 0.3.0-1
+- Sidebar: Projects and Sessions are two tabs, so neither list squeezes the other out (ISSUE-068).
+- Text size in the transcript and project panes is a saved preference, set by pinch, by Ctrl+= and Ctrl+-, or in Settings (ISSUE-070).
+- A pinch on a touchpad zooms the text rather than the whole pane (ISSUE-062).
+- The session footer says how full the context window is, and can be asked to save what matters before the window fills (ISSUE-065).
+- A compacted conversation is marked in the transcript instead of quietly losing its history (ISSUE-064).
+- A turn stopped by a usage limit can be resumed, and says which subagents it stranded (ISSUE-058).
+- New sessions can be started from the web interface (ISSUE-063).
+- Sessions run the claude on this machine, not the one inside the SDK, and which binary runs is a setting (ISSUE-060).
+- Question cards give every question its own freeform answer (ISSUE-057).
+- Enter breaks the line on a touch device.
+
 * Fri Sep 11 2026 higheraims <122185704+higheraims@users.noreply.github.com> - 0.2.0-1
 - Initial package (ISSUE-047)
