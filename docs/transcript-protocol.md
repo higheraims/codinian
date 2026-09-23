@@ -22,7 +22,7 @@ up to N ignores anything `<= N`. Backlog replay (below) uses it too.
 
 ### Types and their extra fields
 
-- **`system`** `{ subtype: "init"|"error"|"note"|"permission_mode"|string, data: object }`
+- **`system`** `{ subtype: "init"|"error"|"note"|"permission_mode"|"compact_boundary"|string, data: object }`
   Session lifecycle. `init.data` carries `model`, `cwd`, `sdk_session_id`, and the
   tool list. `error.data` carries `message`. `note.data` carries one too: a note
   is how the backend reports something the user did not ask for, such as the
@@ -34,6 +34,17 @@ up to N ignores anything `<= N`. Backlog replay (below) uses it too.
   one shows `data.message` if there is one and draws nothing if there is not:
   bookkeeping subtypes carry no message, and rendering them as a bare "note"
   pushes the conversation apart to say nothing.
+
+  `compact_boundary` is the exception that proves the rule, and is drawn by
+  name. It marks the point where the CLI replaced the conversation with a
+  summary, so everything after it continues from that summary rather than from
+  the messages above. Its text is in `content` rather than `message`, which is
+  why the fall-through above dropped it silently until ISSUE-064. `data` also
+  carries `compactMetadata` with `trigger` (`auto` or `manual`) and `preTokens`.
+  Read both that spelling and `compact_metadata`/`pre_tokens`: the stored JSONL
+  uses the first, and what the live CLI puts on the wire has not been observed,
+  because compaction is rare enough that this machine has seen two boundaries
+  in total.
 
 - **`text`** `{ role: "assistant"|"user", text: string, source?: "operator"|"briefing"|"injected" }`
   A finished text block. (M1 sends whole blocks; streaming deltas are a later

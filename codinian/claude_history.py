@@ -532,6 +532,20 @@ def _events_from(path: Path, limit: int, skip_sidechain: bool = True,
                     events.extend(_assistant_events(entry))
                 elif entry.get("type") == "user":
                     events.extend(_user_events(entry, image_base, image_query))
+                elif (entry.get("type") == "system"
+                      and entry.get("subtype") == "compact_boundary"):
+                    # The one system record worth replaying. Everything after it
+                    # continues from a summary rather than from the messages
+                    # above it, and a reader who cannot see the boundary has no
+                    # way to tell why the conversation appears to lose its place
+                    # (ISSUE-064). The CLI's other system subtypes stay out:
+                    # api_error, turn_duration and the rest are bookkeeping that
+                    # would only push the conversation apart.
+                    events.append(("system", {
+                        "subtype": "compact_boundary",
+                        "data": {key: entry[key] for key in
+                                 ("content", "compactMetadata") if key in entry},
+                    }))
     except OSError:
         return []
 

@@ -1,7 +1,7 @@
 ---
 id: ISSUE-064
 title: Compaction happens and the transcript says nothing
-status: open
+status: done
 type: bug
 area: remote
 created: 2026-09-23
@@ -49,9 +49,32 @@ drops null lines on purpose. Nothing is drawn.
   every transcript on this machine. Both were at roughly 1,000,000 tokens, and
   the one above took 137 seconds. So it is not a daily event, but when it
   happens a million tokens of context becomes a summary with no notice.
-- The fall-through comment at `app.js:3643-3646` is right about `thinking_tokens`
-  and wrong about this one. Fixing the general case by reading `content` as well
-  as `message` risks surfacing other bookkeeping subtypes; naming
-  `compact_boundary` explicitly is the safer half of this.
+- **It was broken twice, not once.** The renderer dropping the line was the
+  visible half. `_events_from` in `claude_history.py` only ever built events
+  from `assistant` and `user` records, so on replay the boundary was not
+  dropped at the last step; it never became an event at all. Both are fixed:
+  the parser emits `compact_boundary` by name, and the renderer draws it by
+  name.
+- The general fall-through is unchanged. `docs/transcript-protocol.md` states
+  that an unknown subtype shows `data.message` or nothing, and widening it to
+  read `content` as well would surface the bookkeeping subtypes that rule
+  exists to hide. Only this subtype is named.
+- **Both spellings are read.** The stored JSONL writes `compactMetadata` and
+  `preTokens`. What the CLI puts on the live wire has not been seen here, and
+  waiting for a session to cross a million tokens to find out is not a test.
+  Guessing wrong on the live path would have stayed hidden for months.
+- Verified against the real record: replaying
+  `89e4a4d3-c068-4840-bc29-a3e8c77be6a0` now yields a `compact_boundary` event
+  at index 1199 carrying `trigger: auto` and `preTokens: 1000607`. The mock
+  gained a case in session `b2f9013c` so the renderer can be exercised without
+  a million-token session, and it draws:
+
+  ```
+  Conversation compacted (auto, 1,000,607 tokens).
+  What follows continues from a summary of everything above.
+  ```
 
 ## Resolution
+
+Named in three places: the parser that builds replay events, the renderer, and
+the protocol doc. The mock carries a case so it stays checkable.

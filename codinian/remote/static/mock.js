@@ -951,6 +951,21 @@
       text: 'Picking up where the last session left off. Checking which API pages still reference the removed v1 endpoints.',
     });
 
+    // Compaction, which is otherwise close to unobservable: two boundaries
+    // exist across every transcript on this machine, both at roughly a million
+    // tokens. Without a case here, the renderer added in ISSUE-064 could only
+    // be checked by running a session long enough to trigger one. Spelled the
+    // way the stored JSONL spells it.
+    await wait(600);
+    director.emitEvent(id, {
+      type: 'system',
+      subtype: 'compact_boundary',
+      data: {
+        content: 'Conversation compacted',
+        compactMetadata: { trigger: 'auto', preTokens: 1000607, durationMs: 136891 },
+      },
+    });
+
     await wait(700);
     const grepId = uid('tu_');
     director.emitEvent(id, { type: 'tool_use', tool_use_id: grepId, name: 'Grep', input: { pattern: '/v1/', path: 'docs/api' } });

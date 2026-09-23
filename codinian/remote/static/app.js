@@ -3635,6 +3635,23 @@
       text = `Session initialized — model ${d.model || 'unknown'}${d.cwd ? `, ${d.cwd}` : ''}`;
     } else if (ev.subtype === 'error') {
       text = (ev.data && ev.data.message) || 'Session error';
+    } else if (ev.subtype === 'compact_boundary') {
+      // Drawn by name rather than through the fall-through below, which looks
+      // for `data.message`; this record carries its text as `content` and was
+      // being dropped as though it said nothing (ISSUE-064).
+      //
+      // Both spellings are read because the two paths that produce this event
+      // disagree. The stored JSONL writes `compactMetadata` and `preTokens`,
+      // and what the CLI puts on the live wire has not been seen here: there
+      // are two compaction boundaries in every transcript on this machine, so
+      // guessing wrong would stay hidden for months.
+      const d = ev.data || {};
+      const meta = d.compactMetadata || d.compact_metadata || {};
+      const trigger = meta.trigger === 'manual' ? 'manual' : 'auto';
+      const pre = typeof meta.preTokens === 'number' ? meta.preTokens : meta.pre_tokens;
+      const size = typeof pre === 'number' ? `, ${pre.toLocaleString()} tokens` : '';
+      text = `Conversation compacted (${trigger}${size}). `
+           + 'What follows continues from a summary of everything above.';
     } else if (ev.subtype === 'permission_mode') {
       const mode = ev.data && ev.data.permission_mode;
       const label = PERMISSION_MODE_LABELS[mode] || mode || 'unknown';
