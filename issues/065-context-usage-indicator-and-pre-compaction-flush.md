@@ -95,6 +95,21 @@ returns what `/context` shows: `totalTokens`, `maxTokens`, `percentage`,
   crosses the threshold. The path it takes is `send`, which every typed message
   already uses.
 
+- **2026-09-23, verified on the live wire**, which the note above could only say
+  it had not been. A running session emitted
+
+  ```
+  {"type": "context_usage", "seq": 8, "total_tokens": 19549,
+   "max_tokens": 1000000, "percentage": 2, "auto_compact": true,
+   "threshold": 967000}
+  ```
+
+  so the camelCase read and the snake_case emit both hold outside the mock.
+
+  Asking that question also found what the mock could not express: the reading
+  only moves at a turn boundary, so a turn long enough to compact in the middle
+  of itself never gets the warning or the flush. Filed as [[ISSUE-068]].
+
 ## Resolution
 
 Polled after each turn, emitted as `context_usage`, drawn in the session footer
