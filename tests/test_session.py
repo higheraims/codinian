@@ -328,3 +328,13 @@ def test_snapshot_describes_every_session(manager):
     assert snapshot[0]["id"] == "s1"
     assert snapshot[0]["created_at"] == "2026-08-24T00:00:00"
     assert snapshot[0]["last_output_at"] is None
+
+
+def test_snapshot_carries_every_field_of_meta(manager):
+    """Reading a SessionMeta field off a snapshot must give that field's value,
+    not a null standing in for a key the shape never had (ISSUE-066)."""
+    session = Session(id="s1", name="One", created_at=datetime(2026, 8, 24))
+    manager.add(session)
+    meta, snapshot = session.meta(), manager.snapshot()[0]
+    assert set(meta) <= set(snapshot)
+    assert all(snapshot[k] == v for k, v in meta.items())

@@ -188,14 +188,14 @@ class SessionManager:
         return items
 
     def snapshot(self) -> list[dict]:
+        """Every session as SessionMeta plus the three fields only the REST
+        session endpoints want. Built on meta() rather than beside it: the
+        eight-field shape this used to return had no project_id and no
+        sdk_session_id, so reading either one off GET /api/sessions produced a
+        null for every session and cost a day of chasing it (ISSUE-066)."""
         with self._lock:
             return [
-                {
-                    "id": s.id,
-                    "name": s.name,
-                    "workdir": s.workdir,
-                    "status": s.status.value,
-                    "created_at": s.created_at.isoformat(),
+                s.meta() | {
                     "last_output_at": s.last_output_at.isoformat() if s.last_output_at else None,
                     "pid": s.pid,
                     "resume_session_id": s.resume_session_id,

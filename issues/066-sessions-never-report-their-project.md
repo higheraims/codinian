@@ -1,7 +1,7 @@
 ---
 id: ISSUE-066
 title: Every live session reports no project, so no project lists its own sessions
-status: open
+status: done
 type: bug
 area: tools
 created: 2026-09-23
@@ -87,3 +87,34 @@ then the page it was pressed on never shows it.
   wrong in the same way.
 
 ## Resolution
+
+There was no bug. `project_id` resolves, and a project's Sessions tab lists the
+sessions running in it. The evidence in this ticket was read off `/api/sessions`,
+which does not serve `SessionMeta` at all: it serves `SessionManager.snapshot()`,
+an older eight-field shape with no `project_id` and no `sdk_session_id` key.
+`.get()` on an absent key returns `None`, so both fields read as null for every
+session, in any instance, however long it had been up.
+
+That also settles the contradiction the ticket called its best lead. A field
+that is null at the API and non-null in the database, with no code between the
+two that could drop it, was never being read in the first place.
+
+Asked of a running instance on 2026-09-23, uptime three hours, one session:
+
+```
+GET /api/sessions          78428b6d  status=running  (no project_id key)
+GET /api/projects/d134a760 78428b6d  project_id='d134a760'
+                                     sdk_session_id='e04c0898-...'
+                                     running sessions: 1
+```
+
+Confirmed at the page and not only at the protocol: `project.html?tab=sessions`
+rendered in headless Chromium puts that session under "Running now".
+
+What the ticket was right about is that something here fails quietly. Two
+endpoints described the same object in two shapes, and the one a person reaches
+for by name was the wrong one. `snapshot()` now builds on `meta()` and adds the
+three fields it has that `meta()` does not, so `/api/sessions` is a superset of
+`SessionMeta` and cannot report a phantom null again. It also stops reporting
+`status` as the raw terminal state (`running`) where the rest of the protocol
+says `working`.
