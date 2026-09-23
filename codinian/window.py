@@ -28,6 +28,10 @@ PANE_RETRY_MS = 500
 
 # How far a pinch may take a pane's zoom level. Below 0.5 the transcript is
 # unreadable; above 3.0 the composer no longer fits the pane.
+# The sidebar's two tabs, in the order they appear.
+SIDEBAR_PROJECTS = "projects"
+SIDEBAR_SESSIONS = "sessions"
+
 PANE_ZOOM_MIN = 0.5
 PANE_ZOOM_MAX = 3.0
 
@@ -92,6 +96,16 @@ def _pinch_zoom_step(phase, scale: float, start, current: float):
     if phase == Gdk.TouchpadGesturePhase.CANCEL and start is not None:
         return None, start
     return None, None
+
+
+def _scrolled(child: Gtk.Widget) -> Gtk.ScrolledWindow:
+    """A sidebar tab's page. Each tab scrolls itself rather than sharing one
+    scrollbar with the other, which is what lets the tab in front use the whole
+    height instead of its share of it (ISSUE-068)."""
+    scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
+    scroll.set_child(child)
+    scroll.set_vexpand(True)
+    return scroll
 
 
 def _positive_int(value, fallback: int) -> int:
@@ -279,8 +293,17 @@ class CodinianWindow(Adw.ApplicationWindow):
 
     def _build_ui(self):
         split = Adw.NavigationSplitView()
-        split.set_max_sidebar_width(300)
-        split.set_min_sidebar_width(200)
+        # Wider than the 300/200 it was, because the sidebar's header now
+        # carries the tab switcher as well as the tab's actions (ISSUE-068).
+        # Measured rather than guessed: that header asks for 268px on the
+        # Projects tab and 364px on the Sessions tab, where the longer label
+        # sits beside a Resume and a New button. Under that, libadwaita
+        # ellipsises the tabs to "Proj…" and "Sess…".
+        #
+        # It costs the content pane 60px and gives some of it back: at 300 the
+        # longest project name here drew as "Reformation-Hymnal-for-P…".
+        split.set_max_sidebar_width(370)
+        split.set_min_sidebar_width(300)
 
         split.set_sidebar(self._build_sidebar())
         split.set_content(self._build_content())
@@ -299,41 +322,76 @@ class CodinianWindow(Adw.ApplicationWindow):
         header.set_show_end_title_buttons(False)
         toolbar.add_top_bar(header)
 
-        scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
-        sidebar_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        # Projects and Sessions are two tabs rather than two stacked sections
+        # (ISSUE-068). Stacked, fourteen projects came to 626px against a
+        # sidebar viewport of about 664px, so the Sessions list below them had
+        # under one row to live in and every session was behind a scroll. As
+        # tabs, whichever list is in front gets the whole height.
+        #
+        # `Adw.InlineViewSwitcher` is the same flat underlined strip the
+        # project workspace draws in CSS and the Settings pane already uses, so
+        # the three read as one interface.
+        self._sidebar_stack = Adw.ViewStack()
 
-        # The action that adds to a list sits on that list's heading rather than
-        # in the window header, so it reads as belonging to the section it fills.
-        add_project_btn = self._heading_button("folder-new-symbolic", "Add project",
-                                               self._on_add_project_clicked)
-        sidebar_box.append(self._section_heading("Projects", [add_project_btn]))
         self._project_list = Gtk.ListBox()
         self._project_list.add_css_class("navigation-sidebar")
         self._project_list.set_selection_mode(Gtk.SelectionMode.SINGLE)
         self._project_list.set_sort_func(self._compare_project_rows)
         self._project_list.connect("row-selected", self._on_project_row_selected)
-        sidebar_box.append(self._project_list)
+        self._sidebar_stack.add_titled(
+            _scrolled(self._project_list), SIDEBAR_PROJECTS, "Projects")
 
-        resume_btn = self._heading_button("document-open-recent-symbolic", "Resume session",
-                                          self._on_resume_clicked)
-        new_btn = self._heading_button("list-add-symbolic", "New session",
-                                       self._on_new_clicked)
-        sidebar_box.append(self._section_heading("Sessions", [resume_btn, new_btn]))
         self._session_list = Gtk.ListBox()
         self._session_list.add_css_class("navigation-sidebar")
         self._session_list.set_selection_mode(Gtk.SelectionMode.SINGLE)
         self._session_list.connect("row-selected", self._on_row_selected)
-        sidebar_box.append(self._session_list)
+        self._sessions_page = self._sidebar_stack.add_titled(
+            _scrolled(self._session_list), SIDEBAR_SESSIONS, "Sessions")
 
-        scroll.set_child(sidebar_box)
-        scroll.set_vexpand(True)
+        # The action that adds to a list still sits with that list rather than
+        # in the window header, so it reads as belonging to what it fills. With
+        # the section headings gone there is one button area, and it carries
+        # whichever tab's actions are in front.
+        self._project_actions = self._action_box([
+            self._action_button("folder-new-symbolic", "Add project",
+                                 self._on_add_project_clicked),
+        ])
+        self._session_actions = self._action_box([
+            self._action_button("document-open-recent-symbolic", "Resume session",
+                                 self._on_resume_clicked),
+            self._action_button("list-add-symbolic", "New session",
+                                 self._on_new_clicked),
+        ])
+
+        # Both go in the sidebar's own header bar, which until now held a title
+        # and nothing else. On a row of their own below it they did not fit:
+        # at the 200px minimum sidebar width the two tabs and a button came to
+        # more than the width and libadwaita drew "Proj…" and "Sess…". The
+        # header is the full width, costs no vertical space at all, and is
+        # where libadwaita puts a switcher anyway.
+        #
+        # It is also where the word "Codinian" used to be. The welcome screen
+        # says it in large type and the row pinned at the bottom of the sidebar
+        # says it beside the version, so it was the third copy.
+        header.set_title_widget(Adw.InlineViewSwitcher(stack=self._sidebar_stack))
+        header.pack_end(self._project_actions)
+        header.pack_end(self._session_actions)
+
+        self._sidebar_stack.connect("notify::visible-child-name",
+                                    self._on_sidebar_tab_changed)
+        self._sidebar_stack.set_vexpand(True)
+        self._on_sidebar_tab_changed()  # no notify fires for the opening tab
+
+        sidebar_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        sidebar_box.append(self._sidebar_stack)
+        sidebar_box.set_vexpand(True)
 
         # Name, version and cogwheel, pinned below the scrolling lists
         # (ISSUE-030). A one-row ListBox rather than a plain Box: it inherits
         # the same navigation-sidebar selection styling as the rows above, so
         # "selected" looks the same here as it does for a project.
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        outer.append(scroll)
+        outer.append(sidebar_box)
         outer.append(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
 
         # Two app-level destinations, in one list so they share the selection
@@ -379,29 +437,48 @@ class CodinianWindow(Adw.ApplicationWindow):
         return page
 
     @staticmethod
-    def _heading_button(icon: str, tooltip: str, on_clicked) -> Gtk.Button:
+    def _action_button(icon: str, tooltip: str, on_clicked) -> Gtk.Button:
         btn = Gtk.Button(icon_name=icon, tooltip_text=tooltip, valign=Gtk.Align.CENTER)
         btn.add_css_class("flat")
         btn.connect("clicked", on_clicked)
         return btn
 
     @staticmethod
-    def _section_heading(text: str, buttons: list[Gtk.Button] | None = None) -> Gtk.Widget:
-        label = Gtk.Label(label=text, xalign=0, hexpand=True, valign=Gtk.Align.CENTER)
-        label.add_css_class("dim-label")
-        label.add_css_class("caption-heading")
+    def _action_box(buttons: list[Gtk.Button]) -> Gtk.Widget:
+        """One tab's actions, shown only while that tab is in front."""
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        for btn in buttons:
+            box.append(btn)
+        return box
 
-        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
-        row.set_margin_start(12)
-        # Less at the end than at the start: a flat button carries its own
-        # padding, so matching 12 either side would push the icons too far in.
-        row.set_margin_end(6)
-        row.set_margin_top(8)
-        row.set_margin_bottom(2)
-        row.append(label)
-        for btn in buttons or ():
-            row.append(btn)
-        return row
+    def _on_sidebar_tab_changed(self, *_args) -> None:
+        showing_projects = (self._sidebar_stack.get_visible_child_name()
+                            == SIDEBAR_PROJECTS)
+        self._project_actions.set_visible(showing_projects)
+        self._session_actions.set_visible(not showing_projects)
+
+    def _show_sidebar_tab(self, name: str) -> None:
+        """Bring a tab to the front. Called before selecting a row in its list,
+        because a selection on the tab behind is a highlight nobody can see."""
+        if self._sidebar_stack.get_visible_child_name() != name:
+            self._sidebar_stack.set_visible_child_name(name)
+
+    def _refresh_session_tab_label(self) -> None:
+        """How many sessions there are, on the Sessions tab itself.
+
+        The point of the tabs is that one list is always hidden, so this is
+        what stops a session starting or finishing behind a tab nobody is
+        looking at (ISSUE-068).
+
+        In the label rather than in `Adw.ViewStackPage.badge_number`, which was
+        tried first and draws nothing: `Adw.InlineViewSwitcher` reports the
+        same 176px natural width with a badge of 3 set as with none, where the
+        title going from "Sessions" to "Sessions (3)" takes it to 196. Only
+        `Adw.ViewSwitcher`, the pill-shaped one the rest of the app does not
+        use, renders a badge.
+        """
+        count = len(self._rows)
+        self._sessions_page.set_title(f"Sessions ({count})" if count else "Sessions")
 
     def _build_content(self) -> Adw.NavigationPage:
         toolbar = Adw.ToolbarView()
@@ -455,6 +532,8 @@ class CodinianWindow(Adw.ApplicationWindow):
             dot_css = STATUS_CSS[session.status]
 
         self._add_row(session, dot_css)
+        self._refresh_session_tab_label()
+        self._show_sidebar_tab(SIDEBAR_SESSIONS)
         self._session_list.select_row(self._rows[session.id])
         self._show_session(session.id)
 
@@ -536,6 +615,10 @@ class CodinianWindow(Adw.ApplicationWindow):
         not steal the current selection."""
         self._kinds[session.id] = session.kind
         self._add_row(session, SDK_STATUS_CSS.get(session.wire_status(), "dim-label"))
+        # The badge, but not the tab: a session started from the browser should
+        # not pull the sidebar off whatever list is being read, and the count
+        # is how it announces itself instead (ISSUE-068).
+        self._refresh_session_tab_label()
 
     def _on_sessions_changed(self) -> None:
         """SessionManager change listener. Fires on whichever thread changed the
@@ -740,6 +823,7 @@ class CodinianWindow(Adw.ApplicationWindow):
         index = row.get_index() if row is not None else -1
         if row is not None:
             self._session_list.remove(row)
+        self._refresh_session_tab_label()
         self._row_dots.pop(session_id, None)
         self._kinds.pop(session_id, None)
         self._webviews.pop(session_id, None)
@@ -1013,6 +1097,7 @@ class CodinianWindow(Adw.ApplicationWindow):
         self._refresh_session_subtitles()
 
         if select:
+            self._show_sidebar_tab(SIDEBAR_PROJECTS)
             self._project_list.select_row(self._project_rows[pid])
             self._session_list.unselect_all()
             self._show_project(pid)

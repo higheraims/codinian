@@ -218,3 +218,94 @@ def test_a_terminal_session_is_warned_about_as_a_terminal():
     # about what the shell is doing, so the wording cannot promise anything.
     text = warning(SessionStatus.WORKING.value, kind="terminal")
     assert "terminal" in text
+
+
+# ------------------------------------------------------ the sidebar's tabs
+
+# Projects and Sessions are two tabs rather than two stacked sections
+# (ISSUE-068). Everything below is the logic that hangs off that; the widgets
+# themselves are built and switched in a real window under broadway, which is
+# what proved the assembly works and is recorded in the ticket.
+
+class FakeStack:
+    def __init__(self, name=window.SIDEBAR_PROJECTS):
+        self.name = name
+        self.sets = []
+
+    def get_visible_child_name(self):
+        return self.name
+
+    def set_visible_child_name(self, name):
+        self.name = name
+        self.sets.append(name)
+
+
+class FakeBox:
+    def __init__(self):
+        self.visible = None
+
+    def set_visible(self, value):
+        self.visible = value
+
+
+def tabbed(name=window.SIDEBAR_PROJECTS, rows=None):
+    fake = types.SimpleNamespace(
+        _sidebar_stack=FakeStack(name),
+        _project_actions=FakeBox(),
+        _session_actions=FakeBox(),
+        _sessions_page=types.SimpleNamespace(
+            title=None,
+            set_title=lambda s: setattr(fake._sessions_page, "title", s)),
+        _rows=rows if rows is not None else {},
+    )
+    return fake
+
+
+def test_the_projects_tab_shows_only_the_projects_action():
+    # One button area carries whichever tab's actions are in front, now that
+    # the two section headings that used to hold them are gone.
+    fake = tabbed(window.SIDEBAR_PROJECTS)
+    CodinianWindow._on_sidebar_tab_changed(fake)
+    assert fake._project_actions.visible is True
+    assert fake._session_actions.visible is False
+
+
+def test_the_sessions_tab_shows_only_the_sessions_actions():
+    fake = tabbed(window.SIDEBAR_SESSIONS)
+    CodinianWindow._on_sidebar_tab_changed(fake)
+    assert fake._project_actions.visible is False
+    assert fake._session_actions.visible is True
+
+
+def test_bringing_a_tab_forward_switches_the_stack():
+    # A row selected on the tab behind is a highlight nobody can see, so
+    # anything that selects one brings its tab forward first.
+    fake = tabbed(window.SIDEBAR_PROJECTS)
+    CodinianWindow._show_sidebar_tab(fake, window.SIDEBAR_SESSIONS)
+    assert fake._sidebar_stack.sets == [window.SIDEBAR_SESSIONS]
+
+
+def test_bringing_forward_the_tab_already_in_front_does_nothing():
+    # set_visible_child_name on the current child still emits the notify that
+    # swaps the buttons, so the guard is not only an optimisation.
+    fake = tabbed(window.SIDEBAR_SESSIONS)
+    CodinianWindow._show_sidebar_tab(fake, window.SIDEBAR_SESSIONS)
+    assert fake._sidebar_stack.sets == []
+
+
+def test_the_sessions_tab_carries_a_count():
+    # The point of the tabs is that one list is always hidden, so the count is
+    # what stops a session starting or finishing behind a tab nobody is
+    # looking at. In the label because Adw.InlineViewSwitcher draws no badge.
+    fake = tabbed(rows={"a": 1, "b": 2, "c": 3})
+    CodinianWindow._refresh_session_tab_label(fake)
+    assert fake._sessions_page.title == "Sessions (3)"
+
+
+def test_no_sessions_leaves_the_tab_unadorned():
+    # "Sessions (0)" is a count of nothing taking up room in a strip that has
+    # little to spare.
+    fake = tabbed(rows={})
+    CodinianWindow._refresh_session_tab_label(fake)
+    assert fake._sessions_page.title == "Sessions"
+
