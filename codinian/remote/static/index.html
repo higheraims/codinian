@@ -46,7 +46,17 @@
   <div id="layout">
     <div id="sidebar-backdrop"></div>
     <aside id="sidebar">
-      <div class="sidebar-header">Sessions</div>
+      <div class="sidebar-header">
+        <span>Sessions</span>
+        <!-- The only way from a transcript to the project view, which is where
+             a session gets started (ISSUE-063). Without it a browser opening
+             on an empty session list has nothing clickable at all. Goes with
+             the sidebar in the desktop pane, which reaches projects from the
+             GTK sidebar instead. No token on the link: both pages read the
+             same localStorage key, and a token in an href ends up in
+             screenshots. -->
+        <a id="projects-link" class="sidebar-projects-link" href="project.html">Projects</a>
+      </div>
       <div id="session-list">
         <div class="empty-note">Loading&hellip;</div>
       </div>

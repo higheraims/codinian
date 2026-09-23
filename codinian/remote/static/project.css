@@ -706,6 +706,18 @@
 
 /* ---------- embed mode (desktop pane) ---------- */
 
+/* Pushed to the far end of the bar, away from the breadcrumb, so it reads as
+   leaving this page rather than as another crumb in the trail. */
+.topbar-link {
+  margin-left: auto;
+  color: var(--accent);
+  text-decoration: none;
+  font-size: .82rem;
+  font-weight: 600;
+  padding: .4rem .2rem;
+}
+.topbar-link:hover { text-decoration: underline; }
+
 #app.embed-mode #topbar { display: none; }
 
 /* ---------- responsive ---------- */

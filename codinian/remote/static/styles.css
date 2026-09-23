@@ -410,7 +410,23 @@ button { cursor: pointer; }
   letter-spacing: .06em;
   color: var(--text-muted);
   font-weight: 600;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .5rem;
 }
+/* Set like the heading it shares a row with, so the line stays one piece of
+   chrome; the colour is the only thing marking it as a link. The negative
+   margin buys tap height without moving the baseline, since on a phone this
+   is the control that gets someone to a project (ISSUE-063). */
+.sidebar-projects-link {
+  color: var(--accent);
+  text-decoration: none;
+  flex: none;
+  padding: .4rem 0 .4rem .5rem;
+  margin: -.4rem 0;
+}
+.sidebar-projects-link:hover { text-decoration: underline; }
 .empty-note { padding: 1.25rem 1rem; color: var(--text-muted); font-size: .88rem; }
 
 .session-row {
