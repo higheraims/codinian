@@ -786,8 +786,21 @@ class CodinianWindow(Adw.ApplicationWindow):
         # per-event delta. None between gestures.
         start: list = [None]
 
-        def on_event(_controller, event) -> bool:
-            if event.get_event_type() != Gdk.EventType.TOUCHPAD_PINCH:
+        def on_event(controller, _event) -> bool:
+            # The event comes in as None and has to be asked for instead.
+            # `GtkEventControllerLegacy::event` declares a `GdkEvent*`, which
+            # is a fundamental type rather than a GObject, and PyGObject 3.56
+            # hands the handler None in its place. Every other controller in
+            # this file is a `Gtk.GestureClick`, whose signals carry plain
+            # doubles, so this is the only place it bites.
+            #
+            # Until ISSUE-062 it bit hard: `event.get_event_type()` was the
+            # first line, so every event delivered to a pane raised
+            # AttributeError. One 13 hour run logged 175,686 tracebacks, and
+            # the pinch never reached the branch below, which is why WebKit
+            # went on answering it with its own viewport zoom.
+            event = controller.get_current_event()
+            if event is None or event.get_event_type() != Gdk.EventType.TOUCHPAD_PINCH:
                 return False
             phase = event.get_gesture_phase()
             if phase == Gdk.TouchpadGesturePhase.BEGIN:
