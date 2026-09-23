@@ -64,6 +64,36 @@ def _clamp_pane_zoom(level: float) -> float:
     return min(PANE_ZOOM_MAX, max(PANE_ZOOM_MIN, level))
 
 
+def _pinch_zoom_step(phase, scale: float, start, current: float):
+    """One touchpad pinch event's effect on a pane's zoom, as arithmetic.
+
+    Returns the level the gesture started from, to carry into the next event,
+    and the zoom level to apply now, or None to leave the pane alone.
+
+    Lifted out of the controller in `_redirect_pinch_to_zoom` so it can be
+    tested (ISSUE-067). Broadway can deliver real motion and button events to a
+    headless widget but cannot synthesise `TOUCHPAD_PINCH`, so the branch that
+    decides what a pinch does is reachable in a test only as a function.
+
+    `scale` is cumulative from BEGIN rather than a per-event delta, which is
+    why the starting level has to be carried rather than the pane's current one
+    read each time: multiplying the running level by a cumulative scale
+    compounds it.
+    """
+    if phase == Gdk.TouchpadGesturePhase.BEGIN:
+        return current, None
+    if phase == Gdk.TouchpadGesturePhase.UPDATE:
+        if start is None:
+            # An update with no begin behind it, which is what arrives when a
+            # gesture was already under way before the pane existed.
+            return None, None
+        return start, _clamp_pane_zoom(start * scale)
+    # END keeps whatever the last update set; CANCEL puts it back.
+    if phase == Gdk.TouchpadGesturePhase.CANCEL and start is not None:
+        return None, start
+    return None, None
+
+
 def _positive_int(value, fallback: int) -> int:
     """A stored dimension, or the fallback if the file has been hand-edited
     into something that is not a usable size."""
@@ -802,18 +832,14 @@ class CodinianWindow(Adw.ApplicationWindow):
             event = controller.get_current_event()
             if event is None or event.get_event_type() != Gdk.EventType.TOUCHPAD_PINCH:
                 return False
-            phase = event.get_gesture_phase()
-            if phase == Gdk.TouchpadGesturePhase.BEGIN:
-                start[0] = webview.get_zoom_level()
-            elif phase == Gdk.TouchpadGesturePhase.UPDATE and start[0] is not None:
-                webview.set_zoom_level(
-                    _clamp_pane_zoom(start[0] * event.get_pinch_scale())
-                )
-            else:
-                # END keeps whatever the last update set; CANCEL puts it back.
-                if phase == Gdk.TouchpadGesturePhase.CANCEL and start[0] is not None:
-                    webview.set_zoom_level(start[0])
-                start[0] = None
+            # Every read below is on a pinch event and free of side effects, so
+            # doing all three before the branch costs nothing and leaves the
+            # decision itself in a function a test can reach.
+            start[0], level = _pinch_zoom_step(
+                event.get_gesture_phase(), event.get_pinch_scale(),
+                start[0], webview.get_zoom_level())
+            if level is not None:
+                webview.set_zoom_level(level)
             return True  # handled, so the pinch stops here
 
         controller = Gtk.EventControllerLegacy()

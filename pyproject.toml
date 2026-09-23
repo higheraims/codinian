@@ -73,3 +73,8 @@ testpaths = ["tests"]
 # root goes on sys.path. This is what lets the suite run against a checkout with
 # nothing installed.
 pythonpath = ["."]
+# Everything that opens a real GTK display. It runs by default, since a test
+# nobody runs is the state ISSUE-067 is about, but it starts two processes and
+# takes about ten seconds where the rest of the suite takes two, so `-m "not
+# gtk"` is there for a tight edit loop.
+markers = ["gtk: opens a real GTK window under gtk4-broadwayd"]
