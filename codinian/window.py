@@ -28,12 +28,19 @@ PANE_RETRY_MS = 500
 
 # How far a pinch may take a pane's zoom level. Below 0.5 the transcript is
 # unreadable; above 3.0 the composer no longer fits the pane.
+# The phases that end a pinch, and so the ones worth writing a size down at.
+# END is the size the user chose. CANCEL has already been put back by
+# `_pinch_zoom_step`, and saving there too is what keeps the file from
+# disagreeing with the screen (ISSUE-070).
+_PINCH_SETTLED = frozenset({
+    Gdk.TouchpadGesturePhase.END,
+    Gdk.TouchpadGesturePhase.CANCEL,
+})
+
 # The sidebar's two tabs, in the order they appear.
 SIDEBAR_PROJECTS = "projects"
 SIDEBAR_SESSIONS = "sessions"
 
-PANE_ZOOM_MIN = 0.5
-PANE_ZOOM_MAX = 3.0
 
 STATUS_CSS = {
     Status.RUNNING: "success",
@@ -63,11 +70,6 @@ APP_MARK = Path(__file__).parent / "docs" / "art" / "codinian.svg"
 _mark_cache: list = []
 
 
-def _clamp_pane_zoom(level: float) -> float:
-    """A zoom level held inside the range a pane stays usable at."""
-    return min(PANE_ZOOM_MAX, max(PANE_ZOOM_MIN, level))
-
-
 def _pinch_zoom_step(phase, scale: float, start, current: float):
     """One touchpad pinch event's effect on a pane's zoom, as arithmetic.
 
@@ -91,7 +93,7 @@ def _pinch_zoom_step(phase, scale: float, start, current: float):
             # An update with no begin behind it, which is what arrives when a
             # gesture was already under way before the pane existed.
             return None, None
-        return start, _clamp_pane_zoom(start * scale)
+        return start, config_module.clamp_pane_zoom(start * scale)
     # END keeps whatever the last update set; CANCEL puts it back.
     if phase == Gdk.TouchpadGesturePhase.CANCEL and start is not None:
         return None, start
@@ -868,6 +870,9 @@ class CodinianWindow(Adw.ApplicationWindow):
         webview = WebKit.WebView()
         webview.set_vexpand(True)
         webview.set_hexpand(True)
+        # Before the load rather than after it, so a pane is never briefly
+        # drawn at a size the user did not choose (ISSUE-070).
+        webview.set_zoom_level(config_module.pane_zoom(self._config))
         webview._load_attempts = 0
         webview.connect("load-failed", self._on_pane_load_failed)
         # A link in a rendered message goes to the desktop's browser. Without
@@ -919,17 +924,57 @@ class CodinianWindow(Adw.ApplicationWindow):
             # Every read below is on a pinch event and free of side effects, so
             # doing all three before the branch costs nothing and leaves the
             # decision itself in a function a test can reach.
+            phase = event.get_gesture_phase()
             start[0], level = _pinch_zoom_step(
-                event.get_gesture_phase(), event.get_pinch_scale(),
+                phase, event.get_pinch_scale(),
                 start[0], webview.get_zoom_level())
             if level is not None:
+                # Only the pane under the fingers follows the gesture. The
+                # others are behind it in the stack, so moving them on every
+                # event would be work nobody can see (ISSUE-070).
                 webview.set_zoom_level(level)
+            if phase in _PINCH_SETTLED:
+                # The gesture is over, so this is the size that was meant.
+                # Written to every pane and to the file once, rather than on
+                # each of the events an UPDATE stream is made of.
+                self._apply_pane_zoom(webview.get_zoom_level())
+                self._save_pane_zoom()
             return True  # handled, so the pinch stops here
 
         controller = Gtk.EventControllerLegacy()
         controller.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
         controller.connect("event", on_event)
         webview.add_controller(controller)
+
+    def _panes(self):
+        """Every WebKitGTK pane the window holds. The Settings pane is not one
+        of them: it is GTK, and follows the desktop's font size."""
+        yield from self._webviews.values()
+        yield from self._project_webviews.values()
+        if self._history_webview is not None:
+            yield self._history_webview
+
+    def _apply_pane_zoom(self, level: float) -> None:
+        """Put one text size on every pane, open or not yet built.
+
+        Written to the config here rather than only on the way out, because the
+        complaint in ISSUE-070 was that a pinch was forgotten: `_config` is
+        what `_build_webview_pane` reads, so a pane opened after this gets the
+        same size as the ones already on screen. Persisting it to disk is the
+        caller's business, since a pinch would otherwise rewrite the file once
+        per event.
+        """
+        level = config_module.clamp_pane_zoom(level)
+        self._config["pane_zoom"] = level
+        for webview in self._panes():
+            webview.set_zoom_level(level)
+
+    def _save_pane_zoom(self) -> None:
+        try:
+            config_module.save(self._config)
+        except OSError:
+            pass  # the size is already applied; failing to record it is not
+                  # worth a dialog over
 
     def _on_pane_create(self, webview, navigation_action):
         """Hand a link that asked for a new window to the system browser. The
@@ -1280,6 +1325,7 @@ class CodinianWindow(Adw.ApplicationWindow):
             self._settings_view.connect("toast", self._on_settings_toast)
             self._settings_view.connect("token-rotated", self._on_token_rotated)
             self._settings_view.connect("theme-changed", self._on_theme_changed)
+            self._settings_view.connect("pane-zoom-changed", self._on_pane_zoom_changed)
             self._stack.add_named(self._settings_view, "settings")
         else:
             # Cheap, and it is how a tailnet link set up since the last visit
@@ -1322,6 +1368,13 @@ class CodinianWindow(Adw.ApplicationWindow):
         # at load time from the URL, so it cannot be restyled in place. Reload
         # every pane with the new theme= parameter.
         self._reload_panes()
+
+    def _on_pane_zoom_changed(self, _view, level: float) -> None:
+        # No reload, unlike a theme change: zoom is a property of the view
+        # rather than something the page reads at load, so the panes already
+        # open just change size. The Settings page has written the value
+        # already; this is what puts it on the screen (ISSUE-070).
+        self._apply_pane_zoom(level)
 
     def _on_token_rotated(self, _source):
         # Every open pane is holding the old token in its URL, so its next

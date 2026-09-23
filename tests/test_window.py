@@ -18,22 +18,9 @@ import types
 
 import pytest
 
-from codinian import window
+from codinian import config, window
 from codinian.session import Session, SessionStatus
 from codinian.window import CodinianWindow
-
-
-# ------------------------------------------------------------- pane zoom
-
-@pytest.mark.parametrize("level,expected", [
-    (0.01, window.PANE_ZOOM_MIN),
-    (window.PANE_ZOOM_MIN, window.PANE_ZOOM_MIN),
-    (1.0, 1.0),
-    (window.PANE_ZOOM_MAX, window.PANE_ZOOM_MAX),
-    (99.0, window.PANE_ZOOM_MAX),
-])
-def test_a_zoom_level_is_held_inside_the_usable_range(level, expected):
-    assert window._clamp_pane_zoom(level) == expected
 
 
 # --------------------------------------------------- the pinch state machine
@@ -62,8 +49,8 @@ def test_an_update_scales_the_level_the_gesture_started_from():
 
 
 def test_a_pinch_that_would_leave_the_usable_range_is_clamped():
-    assert step("UPDATE", scale=10.0, start=1.0)[1] == window.PANE_ZOOM_MAX
-    assert step("UPDATE", scale=0.01, start=1.0)[1] == window.PANE_ZOOM_MIN
+    assert step("UPDATE", scale=10.0, start=1.0)[1] == config.PANE_ZOOM_MAX
+    assert step("UPDATE", scale=0.01, start=1.0)[1] == config.PANE_ZOOM_MIN
 
 
 def test_the_end_of_a_pinch_keeps_what_the_last_update_set():
@@ -309,3 +296,93 @@ def test_no_sessions_leaves_the_tab_unadorned():
     CodinianWindow._refresh_session_tab_label(fake)
     assert fake._sessions_page.title == "Sessions"
 
+
+
+# --------------------------------------------------- one text size, all panes
+
+# ISSUE-070: a pinch used to move the pane under the fingers and nothing else,
+# and was forgotten as soon as the pane was rebuilt.
+
+class FakeWebView:
+    def __init__(self, level=1.0):
+        self.level = level
+
+    def get_zoom_level(self):
+        return self.level
+
+    def set_zoom_level(self, level):
+        self.level = level
+
+
+def zoomable(sessions=1, projects=1, history=True, config=None):
+    fake = types.SimpleNamespace(
+        _config=config if config is not None else {},
+        _webviews={f"s{i}": FakeWebView() for i in range(sessions)},
+        _project_webviews={f"p{i}": FakeWebView() for i in range(projects)},
+        _history_webview=FakeWebView() if history else None,
+    )
+    # _apply_pane_zoom calls it, so it has to be bound rather than passed.
+    fake._panes = lambda: CodinianWindow._panes(fake)
+    return fake
+
+
+def test_every_kind_of_pane_is_counted():
+    # Three registries hold web views, and a size that reached only one of them
+    # is the bug this fixes.
+    fake = zoomable(sessions=2, projects=3)
+    assert len(list(CodinianWindow._panes(fake))) == 6
+
+
+def test_a_window_with_no_history_pane_yet_is_not_counted_as_having_one():
+    # _history_webview is None until History is opened for the first time.
+    fake = zoomable(sessions=1, projects=0, history=False)
+    assert len(list(CodinianWindow._panes(fake))) == 1
+
+
+def test_applying_a_size_reaches_every_open_pane():
+    fake = zoomable(sessions=2, projects=1)
+    CodinianWindow._apply_pane_zoom(fake, 1.5)
+    assert [p.level for p in CodinianWindow._panes(fake)] == [1.5, 1.5, 1.5, 1.5]
+
+
+def test_applying_a_size_records_it_for_panes_not_built_yet():
+    # _build_webview_pane reads the config, so a session opened after this has
+    # to come up at the same size as the ones already on screen.
+    fake = zoomable()
+    CodinianWindow._apply_pane_zoom(fake, 1.25)
+    assert fake._config["pane_zoom"] == 1.25
+
+
+@pytest.mark.parametrize("level,expected", [(99.0, 3.0), (0.1, 0.5)])
+def test_a_size_outside_the_range_is_clamped_before_it_is_applied(level, expected):
+    fake = zoomable()
+    CodinianWindow._apply_pane_zoom(fake, level)
+    assert fake._config["pane_zoom"] == expected
+    assert all(p.level == expected for p in CodinianWindow._panes(fake))
+
+
+def test_applying_a_size_does_not_write_the_file():
+    # A pinch emits a stream of updates and the file is written once, when the
+    # gesture settles. _apply_pane_zoom touching the disk would put that write
+    # back on every event.
+    fake = zoomable()
+    fake._config = {"pane_zoom": 1.0}
+    CodinianWindow._apply_pane_zoom(fake, 2.0)
+    # No config_module.save is reachable from the stand-in, so a call would
+    # raise AttributeError rather than pass silently.
+    assert fake._config["pane_zoom"] == 2.0
+
+
+@pytest.mark.parametrize("phase", ["END", "CANCEL"])
+def test_both_ways_a_pinch_can_finish_are_treated_as_settled(phase):
+    # END is the size the user chose. CANCEL has already been put back by
+    # _pinch_zoom_step, and saving there is what keeps the file from
+    # disagreeing with the screen.
+    from gi.repository import Gdk
+    assert getattr(Gdk.TouchpadGesturePhase, phase) in window._PINCH_SETTLED
+
+
+@pytest.mark.parametrize("phase", ["BEGIN", "UPDATE"])
+def test_a_pinch_still_in_progress_is_not_settled(phase):
+    from gi.repository import Gdk
+    assert getattr(Gdk.TouchpadGesturePhase, phase) not in window._PINCH_SETTLED

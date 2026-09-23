@@ -100,3 +100,49 @@ def test_local_ip_returns_an_address_without_sending_anything():
 def test_saving_leaves_no_temp_file_behind(config_file):
     config.load()
     assert [p.name for p in config_file.parent.iterdir()] == ["config.json"]
+
+
+# -------------------------------------------------------- pane text size
+
+# One size for every transcript and project pane, set from Settings or by a
+# pinch and remembered across restarts (ISSUE-070). The range lives here rather
+# than in window.py so the Settings page can read it without importing the
+# window.
+
+@pytest.mark.parametrize("level,expected", [
+    (0.01, config.PANE_ZOOM_MIN),
+    (config.PANE_ZOOM_MIN, config.PANE_ZOOM_MIN),
+    (1.0, 1.0),
+    (config.PANE_ZOOM_MAX, config.PANE_ZOOM_MAX),
+    (99.0, config.PANE_ZOOM_MAX),
+])
+def test_a_zoom_level_is_held_inside_the_usable_range(level, expected):
+    assert config.clamp_pane_zoom(level) == expected
+
+
+def test_a_config_with_no_size_in_it_reads_as_normal():
+    assert config.pane_zoom({}) == 1.0
+
+
+def test_a_stored_size_is_read_back():
+    assert config.pane_zoom({"pane_zoom": 1.5}) == 1.5
+    assert config.pane_zoom({"pane_zoom": 2}) == 2.0
+
+
+@pytest.mark.parametrize("value", [None, "1.5", True, False, [], {}])
+def test_a_size_that_is_not_a_multiplier_falls_back_to_normal(value):
+    # The file is hand-editable, and a zoom level of "1.5" or True cannot be
+    # handed to set_zoom_level. True is excluded explicitly because bool is an
+    # int and would otherwise read as 100%.
+    assert config.pane_zoom({"pane_zoom": value}) == 1.0
+
+
+@pytest.mark.parametrize("value,expected", [(99, 3.0), (0.01, 0.5), (-4, 0.5)])
+def test_a_stored_size_outside_the_range_is_clamped_on_the_way_out(value, expected):
+    # Clamped on read as well as on write, so a value edited into the file by
+    # hand cannot open a pane at a size the controls could never produce.
+    assert config.pane_zoom({"pane_zoom": value}) == expected
+
+
+def test_the_default_config_carries_a_normal_size():
+    assert config.DEFAULTS["pane_zoom"] == 1.0

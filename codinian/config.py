@@ -33,6 +33,28 @@ APP_ID = os.environ.get("CODINIAN_APP_ID", "net.higheraims.codinian")
 LOOPBACK = "127.0.0.1"
 ALL_INTERFACES = "0.0.0.0"
 
+# What a pane's text size may be set to, as a multiplier on its normal size.
+# Below half a pane is unreadable and above triple a transcript is one word to
+# a line; the pinch gesture and the Settings row share the range so neither can
+# reach a size the other cannot (ISSUE-070).
+PANE_ZOOM_MIN = 0.5
+PANE_ZOOM_MAX = 3.0
+
+
+def clamp_pane_zoom(level: float) -> float:
+    """A zoom level held inside the range a pane stays usable at."""
+    return min(PANE_ZOOM_MAX, max(PANE_ZOOM_MIN, level))
+
+
+def pane_zoom(config: dict) -> float:
+    """The stored pane text size, or 1.0 if the file has been hand-edited into
+    something that is not a usable multiplier."""
+    level = config.get("pane_zoom", 1.0)
+    if isinstance(level, bool) or not isinstance(level, (int, float)):
+        return 1.0
+    return clamp_pane_zoom(float(level))
+
+
 DEFAULTS = {
     "token": "",
     "bind": LOOPBACK,
@@ -62,6 +84,15 @@ DEFAULTS = {
     # Interface preferences (ISSUE-030). "system" leaves both the GTK shell and
     # the WebKitGTK panes following the desktop; see theme.py.
     "theme": "system",
+    # How big the text is in the transcript and project panes, as a multiplier
+    # on the pane's normal size (ISSUE-070). One value for all of them: a pinch
+    # used to move the pane under the fingers and nothing else, and was
+    # forgotten as soon as the pane was rebuilt.
+    #
+    # Only the panes. The GTK sidebar, dialogs and this settings window keep
+    # following the desktop's own font size, which is where a font preference
+    # for an application's chrome belongs.
+    "pane_zoom": 1.0,
     "notifications": True,
     # Fallback permission mode for a new session in a folder that is not a
     # registered project. A project's own .codinian/settings.json wins.

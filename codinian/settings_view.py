@@ -58,6 +58,10 @@ class GeneralPage(Adw.PreferencesPage):
         # cannot be restyled in place: their palette comes from a `data-theme`
         # attribute set at load from the URL.
         "theme-changed": (GObject.SignalFlags.RUN_FIRST, None, ()),
+        # The pane text size changed (ISSUE-070). Carries the new multiplier.
+        # No reload, unlike the theme: zoom is a property of the view rather
+        # than something stamped into the page at load.
+        "pane-zoom-changed": (GObject.SignalFlags.RUN_FIRST, None, (float,)),
     }
 
     def __init__(self, config: dict):
@@ -68,19 +72,37 @@ class GeneralPage(Adw.PreferencesPage):
         # value it just read.
         self._loading = True
 
-        appearance = Adw.PreferencesGroup(
-            title="Appearance",
-            description="Applies to the window and to the transcript and project "
-                        "panes inside it, which are web views with a palette of "
-                        "their own.",
-        )
+        # No description on the group: the two rows in it reach different
+        # parts of the interface, so one sentence over both would be wrong
+        # about one of them (ISSUE-070). Each says its own scope instead.
+        appearance = Adw.PreferencesGroup(title="Appearance")
         self._theme = Adw.ComboRow(
             title="Theme",
+            subtitle="The window and the transcript and project panes inside "
+                     "it, which are web views with a palette of their own.",
             model=Gtk.StringList.new([THEME_LABELS[t] for t in theme_module.THEMES]),
         )
         self._theme.set_selected(theme_module.THEMES.index(theme_module.current(config)))
         self._theme.connect("notify::selected", self._on_theme_changed)
         appearance.add(self._theme)
+
+        # In percent, because that is how a browser says the same thing and
+        # this scales the same web views a browser would. The range is the one
+        # a pinch is already clamped to, so the two controls cannot reach sizes
+        # the other cannot (ISSUE-070).
+        self._pane_zoom = Adw.SpinRow(
+            title="Text size in panes",
+            subtitle="Transcript and project panes only, and the same size for "
+                     "all of them. A pinch on a touchpad sets this too. The "
+                     "sidebar and this window follow the desktop's font size.",
+            adjustment=Gtk.Adjustment(
+                lower=config_module.PANE_ZOOM_MIN * 100,
+                upper=config_module.PANE_ZOOM_MAX * 100,
+                step_increment=5, page_increment=25,
+                value=round(config_module.pane_zoom(config) * 100)),
+        )
+        self._pane_zoom.connect("notify::value", self._on_pane_zoom_changed)
+        appearance.add(self._pane_zoom)
         self.add(appearance)
 
         notifications = Adw.PreferencesGroup(title="Notifications")
@@ -105,6 +127,14 @@ class GeneralPage(Adw.PreferencesPage):
         theme_module.apply_to_shell(self._config)
         self.emit("theme-changed")
         self.emit("toast", f"Theme set to {THEME_LABELS[value].lower()}")
+
+    def _on_pane_zoom_changed(self, row, _param) -> None:
+        if self._loading:
+            return
+        level = round(row.get_value()) / 100
+        self._config["pane_zoom"] = level
+        config_module.save(self._config)
+        self.emit("pane-zoom-changed", level)
 
     def _on_notify_toggled(self, switch, _param) -> None:
         if self._loading:
@@ -559,6 +589,7 @@ class SettingsView(Gtk.Box):
         "toast": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         "token-rotated": (GObject.SignalFlags.RUN_FIRST, None, ()),
         "theme-changed": (GObject.SignalFlags.RUN_FIRST, None, ()),
+        "pane-zoom-changed": (GObject.SignalFlags.RUN_FIRST, None, (float,)),
     }
 
     def __init__(self, config: dict):
@@ -570,6 +601,8 @@ class SettingsView(Gtk.Box):
         general = GeneralPage(config)
         general.connect("toast", lambda _p, m: self.emit("toast", m))
         general.connect("theme-changed", lambda _p: self.emit("theme-changed"))
+        general.connect("pane-zoom-changed",
+                        lambda _p, level: self.emit("pane-zoom-changed", level))
         self._stack.add_titled(general, "general", "General")
 
         claude = ClaudePage(config)
