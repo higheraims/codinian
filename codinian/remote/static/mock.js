@@ -951,6 +951,20 @@
       text: 'Picking up where the last session left off. Checking which API pages still reference the removed v1 endpoints.',
     });
 
+    // A nearly full window, then the boundary, then an empty one. Three
+    // events rather than one because the interesting behaviour is the
+    // sequence: the footer goes red, the boundary clears the reading, and the
+    // next turn puts a small number back (ISSUE-065).
+    await wait(400);
+    director.emitEvent(id, {
+      type: 'context_usage',
+      total_tokens: 176000,
+      max_tokens: 200000,
+      percentage: 88,
+      auto_compact: true,
+      threshold: 184000,
+    });
+
     // Compaction, which is otherwise close to unobservable: two boundaries
     // exist across every transcript on this machine, both at roughly a million
     // tokens. Without a case here, the renderer added in ISSUE-064 could only
@@ -997,6 +1011,16 @@
         cache_creation_input_tokens: 2100,
       },
       result_text: null,
+    });
+
+    await wait(250);
+    director.emitEvent(id, {
+      type: 'context_usage',
+      total_tokens: 24500,
+      max_tokens: 200000,
+      percentage: 12.25,
+      auto_compact: true,
+      threshold: 184000,
     });
     director.setStatus(id, 'awaiting_input');
   }

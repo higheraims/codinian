@@ -275,6 +275,25 @@ button { cursor: pointer; }
 .conn-status.is-error::before { background: var(--red); }
 .conn-status.is-mock::before { background: var(--amber); }
 
+/* How full the context window is (ISSUE-065). Set like the plan windows it
+   sits beside, because it is read at the same glance and a second visual
+   weight on one strip would make neither easier to find. The colour is the
+   whole message: at a glance the row says nothing until the window is filling,
+   and then it says it without anyone having to read a number. */
+.context-usage {
+  display: flex;
+  align-items: baseline;
+  gap: .35rem;
+  font-size: .76rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.context-usage[hidden] { display: none; }
+.context-label { text-transform: uppercase; letter-spacing: .04em; }
+.context-value { font-family: var(--font-mono); color: var(--text); }
+.context-usage.is-near .context-value { color: var(--amber); }
+.context-usage.is-full .context-value { color: var(--red); font-weight: 600; }
+
 /* ---------- approval inbox (ISSUE-010) ---------- */
 
 .inbox-toggle {

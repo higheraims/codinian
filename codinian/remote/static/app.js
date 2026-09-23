@@ -43,6 +43,7 @@
   const sessionTotalsEl = document.getElementById('session-totals');
   const sessionFooterEl = document.getElementById('session-footer');
   const planUsageEl = document.getElementById('plan-usage');
+  const contextUsageEl = document.getElementById('context-usage');
 
   // What the footer is allowed to show, from the desktop app's settings. A
   // failed fetch falls back to the same defaults the backend uses rather than
@@ -60,6 +61,7 @@
     } catch { /* keep the defaults */ }
     renderSessionTotals();
     renderPlanUsage();
+    renderContextUsage();
   }
   const approvalJumpEl = document.getElementById('approval-jump');
 
@@ -191,6 +193,7 @@
     // a replayed snapshot fills these in exactly as a live stream does.
     rateLimit: null,   // the CLI's push: window, status, reset, overage
     planUsage: null,   // percentages, from a /usage the user ran
+    context: null,     // how full the context window is, read after each turn
     inbox: new Map(), // request_id -> {session_id, request_id, tool_use_id, name, input, session}
     inboxOpen: false,
     renamingId: null, // the session whose sidebar row is being renamed in place
@@ -419,6 +422,7 @@
       state.currentEvents = new Map();
       state.rateLimit = null;
       state.planUsage = null;
+      state.context = null;
       resetTranscript();
       transcriptEl.appendChild(h('div', { class: 'empty-state' }, 'Loading…'));
       send({ t: 'subscribe', session_id: watching });
@@ -688,6 +692,7 @@
     state.currentEvents = new Map();
     state.rateLimit = null;
     state.planUsage = null;
+    state.context = null;
     for (const ev of msg.events || []) {
       state.currentEvents.set(ev.seq, ev);
       // The last of each wins, and a snapshot is in order, so this ends on the
@@ -699,6 +704,7 @@
     renderPermissionModeControl();
     renderSessionTotals();
     renderPlanUsage();
+    renderContextUsage();
     renderSidebar();
     updateComposerState();
   }
@@ -1084,6 +1090,7 @@
     // from redrawing it against the new session in the meantime.
     state.rateLimit = null;
     state.planUsage = null;
+    state.context = null;
     resetTranscript();
     if (id) transcriptEl.appendChild(h('div', { class: 'empty-state' }, 'Loading…'));
     renderSidebar();
@@ -1091,6 +1098,7 @@
     renderPermissionModeControl();
     renderSessionTotals();
     renderPlanUsage();
+    renderContextUsage();
     updateComposerState();
     appEl.classList.remove('sidebar-open');
     sidebarToggle.setAttribute('aria-expanded', 'false');
@@ -1678,6 +1686,15 @@
     } else if (ev.type === 'plan_usage') {
       state.planUsage = ev;
       renderPlanUsage();
+    } else if (ev.type === 'context_usage') {
+      state.context = ev;
+      renderContextUsage();
+    } else if (ev.type === 'system' && ev.subtype === 'compact_boundary') {
+      // The window just emptied. Leaving the pre-compaction figure up would
+      // have the footer reporting a full context against a conversation that
+      // is now a summary, until the next turn ends and replaces it.
+      state.context = null;
+      renderContextUsage();
     }
   }
 
@@ -1688,6 +1705,7 @@
   function updateSessionFooter() {
     sessionFooterEl.hidden = sessionTotalsEl.hidden
       && (!planUsageEl || planUsageEl.hidden)
+      && (!contextUsageEl || contextUsageEl.hidden)
       && permissionModeControl.hidden;
   }
 
@@ -1820,6 +1838,60 @@
       row.title = state.planUsage.note;
     }
     planUsageEl.hidden = false;
+    updateSessionFooter();
+  }
+
+  // Where the CLI draws the compaction line, as a percentage, since
+  // `autoCompactThreshold` is a token count and the footer speaks in percent.
+  //
+  // Measured against a real session rather than guessed: Opus 5 answers
+  // maxTokens 1,000,000, rawMaxTokens 1,000,000 and autoCompactThreshold
+  // 967,000, so the threshold is 96.7% of the window and maxTokens is not
+  // reduced by any buffer. A fixed amber point would therefore be either
+  // useless on a million-token window or wrong on a smaller one, so the warning
+  // is placed relative to the line the CLI actually drew.
+  const CONTEXT_WARN_MARGIN = 15;   // percentage points before the line
+  const CONTEXT_FULL_FALLBACK = 90; // when the CLI names no threshold
+
+  function contextFullLine(ev) {
+    if (typeof ev.threshold === 'number' && typeof ev.max_tokens === 'number'
+        && ev.max_tokens > 0) {
+      const pct = (ev.threshold / ev.max_tokens) * 100;
+      if (pct > 0 && pct <= 100) return pct;
+    }
+    return CONTEXT_FULL_FALLBACK;
+  }
+
+  // How full the context window is, read from the CLI after every turn
+  // (ISSUE-065). It sits beside the plan windows because it answers the same
+  // shape of question: how much room is left before something outside the
+  // user's control happens to this conversation.
+  function renderContextUsage() {
+    if (!contextUsageEl) return;
+    const meta = state.currentId ? state.sessionsMeta.get(state.currentId) : null;
+    const ev = state.context;
+    const pct = ev && typeof ev.percentage === 'number' ? ev.percentage : null;
+    contextUsageEl.innerHTML = '';
+    // Nothing to show before the first turn ends, on a terminal session, or
+    // when autocompact is off: with nothing going to compact the conversation,
+    // the figure is a number for its own sake.
+    if (pct === null || !meta || meta.kind !== 'sdk' || !ev.auto_compact) {
+      contextUsageEl.hidden = true;
+      updateSessionFooter();
+      return;
+    }
+    const full = contextFullLine(ev);
+    const near = Math.max(50, full - CONTEXT_WARN_MARGIN);
+    contextUsageEl.className = 'context-usage'
+      + (pct >= full ? ' is-full' : (pct >= near ? ' is-near' : ''));
+    contextUsageEl.appendChild(h('span', { class: 'context-label' }, 'Context'));
+    contextUsageEl.appendChild(h('span', { class: 'context-value' }, `${Math.round(pct)}%`));
+    if (typeof ev.total_tokens === 'number' && typeof ev.max_tokens === 'number') {
+      contextUsageEl.title = `${ev.total_tokens.toLocaleString()} of `
+        + `${ev.max_tokens.toLocaleString()} tokens. The conversation is `
+        + 'replaced with a summary when this fills.';
+    }
+    contextUsageEl.hidden = false;
     updateSessionFooter();
   }
 
@@ -2768,6 +2840,13 @@
           breakBubble(target);
           at.appendChild(line);
         }
+        break;
+      }
+
+      case 'context_usage': {
+        // Footer only, like plan_usage below. A reading per turn drawn into
+        // the timeline would put a card between every exchange saying a number
+        // that is already on the strip underneath.
         break;
       }
 

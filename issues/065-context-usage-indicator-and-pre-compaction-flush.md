@@ -1,7 +1,7 @@
 ---
 id: ISSUE-065
 title: No warning before a session compacts, and no chance to save anything first
-status: open
+status: done
 type: feature
 area: sdk
 created: 2026-09-23
@@ -44,35 +44,59 @@ returns what `/context` shows: `totalTokens`, `maxTokens`, `percentage`,
 
 ## Notes & worklog
 
-- 2026-09-23: Scoped alongside [[ISSUE-064]], which is the after-the-fact marker.
-  This is the advance warning. Doing 064 alone leaves the habit broken, since a
-  line that appears after compaction is too late to act on.
+- 2026-09-23: Scoped alongside [[ISSUE-064]], which is the after-the-fact
+  marker. This is the advance warning. Doing 064 alone leaves the habit broken,
+  since a line that appears after compaction is too late to act on.
 
 - **The reading is free, unlike plan usage.** `_capture_plan_usage`
-  (`sdk_session.py:1060-1074`) refuses to ask the CLI anything because asking
-  costs a turn against the limit being reported, and waits for a `/usage` the
-  user ran. That reasoning does not carry over. `get_context_usage` is a control
-  request handled by `_query`, the same family as the `get_server_info()` call
-  already made at `sdk_session.py:325`, so it costs no turn and no tokens. Poll
-  it.
+  (`sdk_session.py`) refuses to ask the CLI anything because asking costs a turn
+  against the limit being reported, and waits for a `/usage` the user ran. That
+  reasoning does not carry over. `get_context_usage` is a control request handled
+  by `_query`, the same family as the `get_server_info()` call already made in
+  `start`, so it is polled at the end of every turn.
+
+- **Measured against a real CLI rather than read off the type hints.** A throwaway
+  `ClaudeSDKClient` on Opus 5 answered `totalTokens 18627`, `maxTokens 1000000`,
+  `rawMaxTokens 1000000`, `percentage 2`, `isAutoCompactEnabled True`,
+  `autoCompactThreshold 967000`. Two things follow. The field names are camelCase,
+  which is what the backend now reads. And `maxTokens` is **not** reduced by an
+  autocompact buffer, so the threshold sits at 96.7% of the window rather than at
+  100%. A fixed amber point would be useless on a million-token window and wrong
+  on a smaller one, so the warning is placed 15 points below whatever line the CLI
+  names, falling back to 90% when it names none.
 
 - **One implementation covers both clients**, because the desktop transcript pane
   renders the same `app.js` the browser does.
 
-- **The injection is the part worth arguing about.** A human-facing indicator
-  only works if a human is watching, which is the failure this issue exists to
-  fix. But an injected prompt spends a turn and interrupts whatever the agent was
-  doing, so the interaction with [[ISSUE-056]] needs checking before it is turned
-  on by default. A first threshold of 80% is a guess and should be tuned against
-  a real session.
+- **The injection ships off by default**, which is what the original scoping
+  argued for. It spends a turn and lands mid-work, and that is a judgement about
+  someone's work rather than about a display. `context_flush_inject` and
+  `context_flush_percent` are in `agent_options.DEFAULTS`; the percentage is
+  clamped to 50-99 because 0 fires on every session's first turn and 100 fires
+  after the CLI has already compacted.
 
-- **`PreCompact` hooks are not the mechanism.** The SDK supports the event
-  (`types.py:270`, input at `types.py:366` carrying `trigger` and
-  `custom_instructions`), and `ClaudeAgentOptions` at `sdk_session.py:283-291`
-  already registers `PreToolUse` and `PostToolUse`, so adding it is small. But it
-  fires once compaction is already starting, with the model not taking a turn, so
-  it cannot make the agent write anything. It is good for snapshotting the
-  transcript aside and for emitting the boundary early; the flush has to happen
-  before it.
+- **It sends rather than queues.** `manager.queue_inject` is what the browser's
+  inject endpoint uses, and that queue is drained by `window.py` alone, so a
+  session running with no GTK window would have queued the prompt and never
+  delivered it. `SdkSession.send` works either way. It gained a `source`
+  parameter so the prompt is echoed as `injected` rather than `operator`: the
+  user did not type it, and a transcript saying they did is wrong. A `note`
+  alongside says the interruption happened and why.
+
+- **Asked once per cycle, not once per turn over the line.** `_flush_asked` is
+  set when the prompt goes out and cleared when a `compact_boundary` arrives.
+
+- Verified in the mock, which gained the sequence that matters in session
+  `b2f9013c`: a reading at 88% draws amber, the boundary clears it rather than
+  leaving a full window reported against a conversation that is now a summary,
+  and the next turn puts 12% back.
+
+- **Not verified:** the injection firing, which needs a session that actually
+  crosses the threshold. The path it takes is `send`, which every typed message
+  already uses.
 
 ## Resolution
+
+Polled after each turn, emitted as `context_usage`, drawn in the session footer
+beside the plan windows. The threshold injection exists and is off until asked
+for.

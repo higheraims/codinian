@@ -271,6 +271,11 @@ class SdkSession:
         # A subagent a limit cut off is one of these and stays one, because the
         # call it belongs to never returns (ISSUE-059).
         self._open_agents: dict[str, str] = {}
+        # Whether this session has already been asked to save its reasoning
+        # before the window fills. Cleared by a compaction boundary, so a long
+        # session gets asked once per cycle rather than once per turn over the
+        # threshold (ISSUE-065).
+        self._flush_asked = False
 
     # ------------------------------------------------------------- lifecycle
 
@@ -442,6 +447,7 @@ class SdkSession:
                         "message": f"could not render one message: {exc}"}})
                 if isinstance(msg, ResultMessage):
                     self._end_turn()
+                    await self._read_context_usage()
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # surface, do not swallow
@@ -607,7 +613,7 @@ class SdkSession:
         """Whether there is still a turn loop to read what `send` queues."""
         return bool(self._loop) and not self._closed and not self._failed
 
-    def send(self, text: str) -> bool:
+    def send(self, text: str, source: str = "operator") -> bool:
         """Queue a user message. Safe to call from any thread. False means the
         message was refused, not queued.
 
@@ -638,7 +644,7 @@ class SdkSession:
             if not self.accepts_input():
                 self._refuse_send()
                 return
-            self._emit("text", {"role": "user", "text": text, "source": "operator"})
+            self._emit("text", {"role": "user", "text": text, "source": source})
             self._remember_sent(message_uuid, text)
             self._sends.put_nowait((message_uuid, text))
 
@@ -1057,6 +1063,74 @@ class SdkSession:
                         "reason": reason, "decided_by": decided_by})
         return True
 
+    async def _read_context_usage(self) -> None:
+        """Ask how full the context window is, and say so (ISSUE-065).
+
+        This asks, where `_capture_plan_usage` below refuses to, and the
+        difference is not inconsistency. Plan usage costs a turn against the
+        very limit it reports. This is a control request handled by `_query`,
+        the same family as the `get_server_info()` call in `start`, so it
+        costs no turn and no tokens.
+        """
+        client = self._client
+        if client is None or self._closed:
+            return
+        try:
+            usage = await client.get_context_usage()
+        except Exception:
+            # A CLI that does not answer this request leaves the footer with
+            # one fewer number in it. That is not worth ending a turn over,
+            # and it is the state every session was in before this existed.
+            return
+        if not isinstance(usage, dict):
+            return
+        self._emit("context_usage", {
+            "total_tokens": usage.get("totalTokens"),
+            "max_tokens": usage.get("maxTokens"),
+            "percentage": usage.get("percentage"),
+            "auto_compact": bool(usage.get("isAutoCompactEnabled")),
+            "threshold": usage.get("autoCompactThreshold"),
+        })
+        self._maybe_ask_for_a_flush(usage)
+
+    def _maybe_ask_for_a_flush(self, usage: dict) -> None:
+        """Ask the session to write down what matters, once, before the CLI
+        replaces the conversation with a summary.
+
+        Off unless turned on. An injected prompt spends a turn and lands in the
+        middle of whatever the session was doing, which is a judgement about
+        someone's work rather than about a display, so `agent_options.DEFAULTS`
+        leaves it to the user.
+
+        Sent through `send` rather than `manager.queue_inject`, which is the
+        route the browser's inject endpoint takes: that queue is drained by
+        `window.py` alone, so a session running with no GTK window would queue
+        this and never deliver it. `send` is the same path either way.
+
+        Marked `injected` rather than `operator`, because the user did not type
+        it and a transcript that says they did is wrong. The note below is what
+        says the interruption happened.
+        """
+        if self._flush_asked or self._closed:
+            return
+        if not usage.get("isAutoCompactEnabled"):
+            # Nothing is going to compact this conversation, so there is
+            # nothing to get ahead of.
+            return
+        percentage = usage.get("percentage")
+        if not isinstance(percentage, (int, float)):
+            return
+        prefs = agent_options.context_flush(config_module.load())
+        if not prefs["enabled"] or percentage < prefs["percent"]:
+            return
+        self._flush_asked = True
+        if not self.send(agent_options.CONTEXT_FLUSH_PROMPT, source="injected"):
+            self._flush_asked = False
+            return
+        self._emit("system", {"subtype": "note", "data": {"message":
+            f"Context is {percentage:.0f}% full. Asked this session to save "
+            "anything worth keeping before it is compacted."}})
+
     def _capture_plan_usage(self, text) -> None:
         """Read plan percentages out of a `/usage` the user ran themselves.
 
@@ -1106,6 +1180,10 @@ class SdkSession:
                 caps = data.get("capabilities")
                 if isinstance(caps, list):
                     self._capabilities = caps
+            if getattr(msg, "subtype", None) == "compact_boundary":
+                # The window just emptied, so the next time it fills is a new
+                # occasion to ask (ISSUE-065).
+                self._flush_asked = False
             self._emit("system", {"subtype": getattr(msg, "subtype", None), "data": data})
         elif isinstance(msg, ResultMessage):
             result_text = getattr(msg, "result", None)

@@ -66,7 +66,31 @@ DEFAULTS = {
     # caching is automatic, so the figures describe something nobody is
     # deciding about.
     "show_cache_tokens": False,
+    # What to do as the context window fills (ISSUE-065). The percentage is
+    # read from the CLI after every turn and shown in the footer regardless;
+    # these two decide whether anything happens on its own.
+    #
+    # The injection is off by default because it is not a display decision. It
+    # spends a turn and arrives mid-work, and whether that trade is worth
+    # making depends on what the session is doing. Turn it on for the long
+    # exploratory sessions where losing the reasoning to a summary costs more
+    # than one interrupted turn.
+    "context_flush_inject": False,
+    "context_flush_percent": 80,
 }
+
+# What the session says when the window gets close to full, if asked to. Worded
+# as a standing instruction rather than a question, because the turn it spends
+# is already spent by the time it is read and a session that answers "yes, I
+# should" has wasted it.
+CONTEXT_FLUSH_PROMPT = (
+    "This conversation is close to the point where it will be compacted and "
+    "replaced with a summary. Before that happens, write anything worth "
+    "keeping to memory: decisions and the reasoning behind them, constraints "
+    "discovered, and anything a future session would have to work out again "
+    "from scratch. Skip what the repository or the issue tracker already "
+    "records. Then carry on with what you were doing."
+)
 
 # The subset of the above the transcript page needs; it crosses to the browser
 # as a unit, so it is named in one place.
@@ -81,6 +105,26 @@ def _choice(config: dict, key: str, allowed) -> str:
 def display_prefs(config: dict) -> dict:
     """Which of the footer's two optional parts to show."""
     return {key: bool(config.get(key, DEFAULTS[key])) for key in DISPLAY_KEYS}
+
+
+def context_flush(config: dict) -> dict:
+    """Whether to ask a session to save its reasoning as the window fills, and
+    at what percentage.
+
+    Clamped rather than validated: a threshold of 0 would fire on the first
+    turn of every session and one of 100 would fire after the CLI had already
+    compacted, and neither is what anyone meant by typing it.
+    """
+    try:
+        percent = int(config.get("context_flush_percent",
+                                 DEFAULTS["context_flush_percent"]))
+    except (TypeError, ValueError):
+        percent = DEFAULTS["context_flush_percent"]
+    return {
+        "enabled": bool(config.get("context_flush_inject",
+                                   DEFAULTS["context_flush_inject"])),
+        "percent": max(50, min(99, percent)),
+    }
 
 
 def model(config: dict) -> str:

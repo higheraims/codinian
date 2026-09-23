@@ -221,6 +221,22 @@ answers.
   the numbers are shown. Render in the session footer, not as a transcript entry:
   the `/usage` output it was read from is already in the transcript above it.
 
+- **`context_usage`** `{ total_tokens, max_tokens, percentage, auto_compact: bool, threshold }`
+  How full the context window is, emitted after every turn ends. When it fills,
+  the CLI replaces the conversation with a summary, and before ISSUE-065 the
+  first sign of that was that it had already happened.
+
+  Polled, unlike `plan_usage` above, and the difference is not inconsistency.
+  Plan usage costs a turn against the limit it reports; this is a control
+  request handled by the SDK's `_query`, the same family as `get_server_info`,
+  so it costs no turn and no tokens. `threshold` is `autoCompactThreshold`, a
+  token count rather than a percentage: Opus 5 answers 967,000 against a
+  1,000,000 window, so a client placing a warning should work back from it
+  rather than pick a fixed number. `auto_compact` false means nothing will
+  compact this conversation and there is nothing to warn about. Render in the
+  session footer; a per-turn reading in the timeline would put a card between
+  every exchange repeating what the strip below already says.
+
 - **`status`** `{ status: SessionStatus }`
   A session-level status change (see below). Cheap to render (updates the dot and
   header), and it is what replaces the old output-timing heuristic.
