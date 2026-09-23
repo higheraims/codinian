@@ -149,7 +149,7 @@ EDIT_TOOLS = frozenset({"Edit", "MultiEdit", "Write", "NotebookEdit"})
 HOOK_TIMEOUT_SECONDS = 24 * 60 * 60
 
 # How long a reading of the context window stays good enough to skip taking
-# another (ISSUE-068).
+# another (ISSUE-069).
 #
 # The reading used to be taken once, on the result that ends a turn, so a turn
 # long enough to compact in the middle of itself was compacted against a footer
@@ -204,7 +204,7 @@ def _one_line(text: str) -> str:
 def _context_display_key(event: dict) -> tuple:
     """What a client would draw from a context reading. Two readings with the
     same key put the same footer on the screen, so only the first is kept
-    (ISSUE-068)."""
+    (ISSUE-069)."""
     pct = event.get("percentage")
     return (
         round(pct) if isinstance(pct, (int, float)) else None,
@@ -313,7 +313,7 @@ class SdkSession:
         self._flush_asked = False
         # When the context window was last measured, on the event loop's clock.
         # Zero rather than None so the first message of the first turn asks
-        # (ISSUE-068).
+        # (ISSUE-069).
         self._context_read_at = 0.0
         # The last reading a client was actually shown, so readings that would
         # draw the same footer are not stored and re-sent.
@@ -492,7 +492,7 @@ class SdkSession:
                     await self._read_context_usage(force=True)
                 else:
                     # Mid-turn, so a turn that fills the window does not reach
-                    # its end before anyone hears about it (ISSUE-068). Rate
+                    # its end before anyone hears about it (ISSUE-069). Rate
                     # limited by the clock, not by the message, because a turn
                     # can emit hundreds of these in a second.
                     await self._read_context_usage()
@@ -1124,7 +1124,7 @@ class SdkSession:
         turn, which is what `force` distinguishes: a result is worth a reading
         however recent the last one was, since it is the figure the session
         rests at until someone types again. Everything else waits out
-        `CONTEXT_READ_INTERVAL` (ISSUE-068).
+        `CONTEXT_READ_INTERVAL` (ISSUE-069).
 
         Awaited in the message loop rather than spawned beside it, so two of
         these can never be in flight at once. The cost is that a CLI which
@@ -1169,7 +1169,7 @@ class SdkSession:
         # that runs for hours leaves one event per point it climbed rather than
         # one every fifteen seconds. The exact token count in the tooltip can
         # trail by up to a percent of the window as a result, which is the
-        # trade (ISSUE-068).
+        # trade (ISSUE-069).
         key = _context_display_key(event)
         if key != self._last_context_shown:
             self._last_context_shown = key
@@ -1273,7 +1273,7 @@ class SdkSession:
                 # Clients clear the footer on a boundary, so the next reading
                 # has to be taken and emitted rather than skipped as a repeat
                 # of one describing a conversation that no longer exists
-                # (ISSUE-068).
+                # (ISSUE-069).
                 self._last_context_shown = None
                 self._context_read_at = 0.0
             self._emit("system", {"subtype": getattr(msg, "subtype", None), "data": data})

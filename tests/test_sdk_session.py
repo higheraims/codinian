@@ -472,7 +472,7 @@ def readings(manager):
 
 @async_test
 async def test_a_reading_is_taken_during_a_turn_not_only_at_the_end_of_one():
-    # The whole of ISSUE-068: a turn long enough to compact in the middle of
+    # The whole of ISSUE-069: a turn long enough to compact in the middle of
     # itself used to reach its end before anyone heard a figure.
     manager = SessionManager()
     manager.add(Session(id="s1", kind="sdk"))
@@ -584,7 +584,7 @@ async def test_a_compaction_boundary_makes_the_session_askable_again():
 
 @async_test
 async def test_the_flush_prompt_can_now_fire_in_the_middle_of_a_turn(monkeypatch):
-    # The reason ISSUE-068 is a bug rather than a display nicety. The prompt
+    # The reason ISSUE-069 is a bug rather than a display nicety. The prompt
     # used to get its only chance on the result that ends a turn, so a turn
     # that crossed the threshold in the middle of itself was compacted without
     # ever being asked.

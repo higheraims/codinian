@@ -1863,7 +1863,7 @@
   }
 
   // How full the context window is, read from the CLI as a turn runs and
-  // again when it ends (ISSUE-065, ISSUE-068). It sits beside the plan windows
+  // again when it ends (ISSUE-065, ISSUE-069). It sits beside the plan windows
   // because it answers the same shape of question: how much room is left
   // before something outside the user's control happens to this conversation.
   function renderContextUsage() {
@@ -2845,7 +2845,7 @@
 
       case 'context_usage': {
         // Footer only, like plan_usage below. Drawn into the timeline these
-        // would put a card between every exchange, and since ISSUE-068 several
+        // would put a card between every exchange, and since ISSUE-069 several
         // within one, all saying a number that is already on the strip
         // underneath.
         break;

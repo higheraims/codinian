@@ -952,7 +952,7 @@
     });
 
     // The window filling inside one turn, with a tool call between the
-    // readings and no result ending it. This is what ISSUE-068 changed: the
+    // readings and no result ending it. This is what ISSUE-069 changed: the
     // figure used to arrive once, on the result, so the climb to the line was
     // never drawn and the turn that crossed it was compacted mid-flight.
     await wait(400);

@@ -1,5 +1,5 @@
 ---
-id: ISSUE-068
+id: ISSUE-069
 title: The context reading only moves at a turn boundary, so a long turn can compact without warning
 status: done
 type: bug
@@ -134,6 +134,19 @@ the one from before that turn started.
 - ISSUE-065 shipped with a mock case and no Python test, which is why this went
   unnoticed. The eight tests added here cover the gate, the force at a turn
   boundary, the dedupe, the boundary reset, and the flush firing mid-turn.
+
+- **Filed as 068 and renumbered to 069 the same day.** 068 was already taken by
+  "Improve project view in desktop", written in Codinian while this was being
+  worked on. The number was hardcoded here rather than asked for: `next_id` was
+  called with the wrong signature, raised `TypeError`, and the answer was
+  guessed from a directory listing taken hours earlier instead of the call
+  being fixed. `next_id('.', 'issues')` now returns 069, which is where this
+  landed.
+
+  Nothing was lost; the two files never shared a name. The commits below the
+  renumber still say 068 in their subjects, because rewriting them would be a
+  worse trade than a line here saying so: `855013a` files this ticket and
+  `aa2f74c` implements it.
 
 ## Resolution
 

@@ -108,7 +108,7 @@ returns what `/context` shows: `totalTokens`, `maxTokens`, `percentage`,
 
   Asking that question also found what the mock could not express: the reading
   only moves at a turn boundary, so a turn long enough to compact in the middle
-  of itself never gets the warning or the flush. Filed as [[ISSUE-068]].
+  of itself never gets the warning or the flush. Filed as [[ISSUE-069]].
 
 ## Resolution
 
