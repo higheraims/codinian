@@ -69,9 +69,43 @@ the one from before that turn started.
   on an idle session as well; every N tool results is cheap and tracks the thing
   that actually grows the context.
 
-- Worth checking whether the CLI announces an auto-compaction it is about to do,
-  rather than only the `compact_boundary` after the fact. If it does, that is a
-  better trigger than any poll.
+- **The open question above, answered: it announces, and the announcement is
+  still no use as this trigger.** `PreCompact` is a hook event the SDK declares
+  alongside the `PreToolUse` and `PostToolUse` this app already registers, and
+  it fires. A throwaway client on Haiku 4.5 with one registered, sent
+  `/compact`:
+
+  ```
+  PreCompact at +0.01s
+    trigger: manual
+    keys: custom_instructions, cwd, hook_event_name, prompt_id,
+          session_id, transcript_path, trigger
+  ```
+
+  So there is notice, and it says whether a person asked or the CLI decided.
+  What there is not is time. Compaction begins as the hook returns, and what
+  this ticket wanted the warning for is a turn: asking the session to write
+  down what matters means the model generating, and it cannot generate while
+  its conversation is being replaced. A hook that blocked to buy time would
+  block the session it was trying to give work to.
+
+  The poll therefore stays what decides when to ask, and the percentage
+  threshold stays what it is measured against.
+
+  Two things `PreCompact` would be good for, neither of them this:
+  clearing `_flush_asked` and `_last_context_shown` when compaction starts
+  rather than when it ends, and saying so on screen while it runs. Filed as
+  [[ISSUE-071]].
+
+  Not verified: that it fires for `trigger: auto` as well as `manual`. Reaching
+  an automatic compaction means a million tokens, which is the same reason
+  [[ISSUE-064]] could not test its own renderer.
+
+- Nothing announces it in the stored transcript, which is the other half of the
+  same question. Both `compact_boundary` records on this machine are preceded
+  only by ordinary traffic: session bookkeeping in one
+  (`attachment`, `last-prompt`, `ai-title`, `mode`, `permission-mode`,
+  `bridge-session`) and six `user` records in the other.
 
 - **The question that had to be answered first: does the CLI recompute this
   mid-turn at all?** If `get_context_usage` only measured at a turn boundary,
