@@ -943,6 +943,17 @@ button { cursor: pointer; }
 .tool-card-state.state-ok { background: var(--green-bg); color: var(--green); }
 .tool-card-state.state-error { background: var(--red-bg); color: var(--red); }
 .tool-card-state.state-pending { background: var(--amber-bg); color: var(--amber); }
+/* Which permission mode let this call through without asking (ISSUE-076).
+   Deliberately quieter than the state badge beside it: it is the same register
+   as a .system-line, and it is on every card in Auto. */
+.tool-card-permission {
+  flex-shrink: 0;
+  font-size: .7rem;
+  color: var(--text-faint);
+  cursor: help;
+}
+.tool-card-permission::before { content: "\21B3\00A0"; }
+.tool-card-permission.is-approved::before { content: "\2713\00A0"; }
 
 .tool-card-section { padding: .6rem .8rem; border-top: 1px solid var(--border); }
 /* First line of a folded result, so the toggle is a decision rather than a

@@ -122,8 +122,16 @@ up to N ignores anything `<= N`. Backlog replay (below) uses it too.
   `approval_request` was raised for it. `outcome` is `allow` when Codinian
   approved it on the mode's behalf (`bypassPermissions`, or `acceptEdits` on an
   edit tool) and `defer` when the decision was left to the CLI (`auto`,
-  `dontAsk`). Render as a one-line note: a session that has stopped prompting
-  should say which mode did that (ISSUE-027).
+  `dontAsk`). A session that has stopped prompting should say which mode did
+  that (ISSUE-027), so the renderer marks the tool card carrying the same
+  `tool_use_id` rather than adding a line of its own: in Auto there is one of
+  these per tool call, and a subagent's calls render inside an Agent card the
+  notes never reach (ISSUE-076).
+
+  Order is not guaranteed against the `tool_use` it refers to. On the main
+  thread the block arrives first; inside a subagent the note does. A renderer
+  has to hold the note until the card exists, and report whatever is still
+  held when the turn ends.
 
 - **`approval_request`** `{ request_id: string, tool_use_id: string, name: string, input: object }`
   Claude wants to run a tool that needs a human decision. The session is blocked

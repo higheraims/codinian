@@ -510,15 +510,6 @@
         Array.from({ length: 40 }, (_, i) => `Rule ${i + 1}: state the eviction policy before changing it.`).join('\n'),
     });
 
-    await wait(400);
-    director.emitEvent(id, {
-      type: 'permission_note',
-      tool_use_id: uid('tu_'),
-      name: 'Read',
-      mode: 'acceptEdits',
-      outcome: 'allow',
-    });
-
     await wait(600);
     director.emitEvent(id, {
       type: 'thinking',
@@ -536,6 +527,15 @@
         old_string: 'class Cache:\n    def __init__(self):\n        self._store = {}',
         new_string: 'class Cache:\n    def __init__(self, max_size=512):\n        self._store = OrderedDict()\n        self._max_size = max_size',
       },
+    });
+
+    await wait(300);
+    director.emitEvent(id, {
+      type: 'permission_note',
+      tool_use_id: editId,
+      name: 'Edit',
+      mode: 'acceptEdits',
+      outcome: 'allow',
     });
 
     await wait(700);

@@ -2122,6 +2122,10 @@
       // Agent cards whose subagent has not reported back yet, so several at
       // once can be counted rather than hunted for.
       runningAgents: new Set(),
+      // Permission notes waiting for the card they describe, keyed by
+      // tool_use_id. Inside a subagent the note arrives before the block it
+      // belongs to, so it cannot be stamped on arrival (ISSUE-076).
+      pendingNotes: new Map(),
       lastBubbleRole: null,
       lastBubbleEl: null,
     };
@@ -2146,6 +2150,9 @@
     }
     const sorted = Array.from(state.currentEvents.values()).sort((a, b) => a.seq - b.seq);
     for (const ev of sorted) appendEventToDom(ev);
+    // A replay can end mid-turn, with no `usage` event to have flushed against.
+    const orphans = flushPendingNotes();
+    if (orphans) transcriptEl.appendChild(orphans);
     scrollToBottom();
     updateApprovalJump();
   }
@@ -2703,8 +2710,13 @@
       }
 
       case 'permission_note': {
-        breakBubble(target);
-        at.appendChild(buildPermissionNote(ev));
+        // Not a line of its own. Which mode let a call through belongs on that
+        // call's card: one note per tool call filled the parent transcript
+        // with notices about subagent work that renders inside an Agent card
+        // and is never beside them (ISSUE-076).
+        const noted = renderState.toolCards.get(ev.tool_use_id);
+        if (noted) noted.setPermissionNote(ev);
+        else renderState.pendingNotes.set(ev.tool_use_id, ev);
         break;
       }
 
@@ -2731,6 +2743,11 @@
         // Keyed globally, not per destination, so a tool_result pairs with its
         // call wherever either of them rendered.
         renderState.toolCards.set(ev.tool_use_id, card);
+        const parked = renderState.pendingNotes.get(ev.tool_use_id);
+        if (parked) {
+          renderState.pendingNotes.delete(ev.tool_use_id);
+          card.setPermissionNote(parked);
+        }
         at.appendChild(card.el);
         break;
       }
@@ -2813,6 +2830,11 @@
 
       case 'usage': {
         breakBubble(target);
+        // The turn is over, so a note still waiting has no card coming. Every
+        // call seen so far produces a block, but a mode that skipped the human
+        // is not a thing to drop silently on the strength of that.
+        const orphans = flushPendingNotes();
+        if (orphans) at.appendChild(orphans);
         at.appendChild(buildUsageLine(ev));
         break;
       }
@@ -3025,9 +3047,18 @@
     }
     el.appendChild(inputSection);
 
+    let permissionBadge = null;
+
     return {
       el,
       nested,
+      // Appended after the state badge, so it sits at the right of the head
+      // whether or not the call has a summary to push it there.
+      setPermissionNote(noteEv) {
+        if (permissionBadge) permissionBadge.remove();
+        permissionBadge = buildPermissionBadge(noteEv);
+        head.appendChild(permissionBadge);
+      },
       setResult(resultEv) {
         if (isAgent && renderState) {
           renderState.runningAgents.delete(el);
@@ -3684,13 +3715,46 @@
     return `${seconds}s`;
   }
 
-  // A tool call the permission mode let through without asking. Says which
-  // mode did it, so a session that stopped prompting is legibly in Auto rather
-  // than mysteriously quiet (ISSUE-027).
-  function buildPermissionNote(ev) {
+  // How to say that the permission mode let a call through without asking, so
+  // a session that stopped prompting is legibly in Auto rather than
+  // mysteriously quiet (ISSUE-027). The `allow`/`defer` split is the point of
+  // the wording: `allow` means Codinian approved the call on the mode's
+  // behalf, `defer` means the answer came from somewhere Codinian cannot see.
+  function permissionPhrase(ev) {
     const label = PERMISSION_MODE_LABELS[ev.mode] || ev.mode || 'the permission mode';
     const verb = ev.outcome === 'allow' ? 'auto-approved by' : 'left to the CLI by';
-    return h('div', { class: 'system-line' }, `${ev.name || 'Tool call'} ${verb} ${label}`);
+    return { label, verb };
+  }
+
+  function buildPermissionBadge(ev) {
+    const { label, verb } = permissionPhrase(ev);
+    return h('span', {
+      class: 'tool-card-permission' + (ev.outcome === 'allow' ? ' is-approved' : ''),
+      title: `${ev.name || 'Tool call'} ${verb} ${label}`,
+    }, label);
+  }
+
+  // Notes whose card never rendered, as one counted line. Grouped by mode and
+  // outcome, which is almost always a single group: the mode changes between
+  // turns, not within one.
+  function flushPendingNotes() {
+    if (!renderState || !renderState.pendingNotes.size) return null;
+    const groups = new Map();
+    for (const ev of renderState.pendingNotes.values()) {
+      const key = `${ev.mode}|${ev.outcome}`;
+      const group = groups.get(key);
+      if (group) group.count += 1;
+      else groups.set(key, { ev, count: 1 });
+    }
+    renderState.pendingNotes.clear();
+    const parts = Array.from(groups.values()).map(({ ev, count }) => {
+      const { label, verb } = permissionPhrase(ev);
+      const subject = count === 1
+        ? (ev.name || 'Tool call')
+        : `${count.toLocaleString()} tool calls`;
+      return `${subject} ${verb} ${label}`;
+    });
+    return h('div', { class: 'system-line' }, parts.join('  ·  '));
   }
 
   function buildContextBlock(text, label) {
