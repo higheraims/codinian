@@ -59,9 +59,15 @@ up to N ignores anything `<= N`. Backlog replay (below) uses it too.
   on assistant blocks and on events recorded before the field existed.
 
 - **`thinking`** `{ text: string }`
-  Extended-thinking block. Render collapsed by default. On current models the
-  text is empty unless the session asked for `thinking.display: "summarized"`;
-  see the Claude tab in Settings (ISSUE-032).
+  Extended-thinking block. On current models the text is empty unless the
+  session asked for `thinking.display: "summarized"`; see the Claude tab in
+  Settings (ISSUE-032). An empty one is not rendered at all.
+
+  How much of a non-empty one shows is the reader's `thinking_view` preference,
+  served from `/api/prefs`: folded, folded with its first line beside the label,
+  or open (ISSUE-077). Folded was the only behaviour before that, which hid
+  most of what a session doing a run of tool calls was up to, since the
+  narration goes here rather than into a message.
 
 - **`tool_use`** `{ tool_use_id: string, name: string, input: object }`
   Claude is calling a tool. `name` is e.g. `Bash`, `Read`, `Edit`, `Write`.

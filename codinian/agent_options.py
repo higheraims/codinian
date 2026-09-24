@@ -38,6 +38,18 @@ EFFORT_LEVELS = (UNSET, "low", "medium", "high", "xhigh", "max")
 #   disabled    no extended thinking at all
 THINKING_MODES = (UNSET, "summarized", "omitted", "disabled")
 
+# What the transcript does with reasoning text that did come back. Nothing to
+# do with THINKING_MODES above, which decides whether there is any.
+#
+#   collapsed   a fold labelled THINKING, opened by clicking it
+#   preview     the same fold, with the reasoning's first line beside the label
+#   expanded    open, the whole block in the timeline
+#
+# Preview is the default. Collapsed was the only behaviour until ISSUE-077, and
+# it hid 87% of the assistant's prose in the session that found this: 38,076
+# characters of reasoning behind a fold, against 5,894 characters of message.
+THINKING_VIEWS = ("collapsed", "preview", "expanded")
+
 # Effort levels that current models refuse to pair with disabled thinking.
 # Claude Opus 5 returns a 400 for the combination rather than clamping it.
 EFFORT_REJECTS_DISABLED_THINKING = frozenset({"xhigh", "max"})
@@ -66,6 +78,8 @@ DEFAULTS = {
     # caching is automatic, so the figures describe something nobody is
     # deciding about.
     "show_cache_tokens": False,
+    # How much of a thinking block the transcript shows without being asked.
+    "thinking_view": "preview",
     # What to do as the context window fills (ISSUE-065). The percentage is
     # read from the CLI after every turn and shown in the footer regardless;
     # these two decide whether anything happens on its own.
@@ -92,8 +106,9 @@ CONTEXT_FLUSH_PROMPT = (
     "records. Then carry on with what you were doing."
 )
 
-# The subset of the above the transcript page needs; it crosses to the browser
-# as a unit, so it is named in one place.
+# The boolean subset of the above the transcript page needs; it crosses to the
+# browser as a unit, so it is named in one place. `thinking_view` rides along
+# in display_prefs but is a choice rather than a switch, so it is not here.
 DISPLAY_KEYS = ("show_plan_usage", "show_cost", "show_cache_tokens")
 
 
@@ -102,9 +117,21 @@ def _choice(config: dict, key: str, allowed) -> str:
     return value if value in allowed else DEFAULTS[key]
 
 
+def thinking_view(config: dict) -> str:
+    """How much of a thinking block the transcript shows on its own.
+
+    A display choice, not a session option: it changes what an open transcript
+    draws and has no bearing on what the next session asks the model for. That
+    is `thinking` above."""
+    return _choice(config, "thinking_view", THINKING_VIEWS)
+
+
 def display_prefs(config: dict) -> dict:
-    """Which of the footer's two optional parts to show."""
-    return {key: bool(config.get(key, DEFAULTS[key])) for key in DISPLAY_KEYS}
+    """Everything the transcript page decides its own rendering from: the
+    footer's optional parts, and how much of a thinking block to show."""
+    prefs = {key: bool(config.get(key, DEFAULTS[key])) for key in DISPLAY_KEYS}
+    prefs["thinking_view"] = thinking_view(config)
+    return prefs
 
 
 def context_flush(config: dict) -> dict:

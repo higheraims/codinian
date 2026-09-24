@@ -174,6 +174,12 @@ THINKING_LABELS = {
     "disabled": "No extended thinking",
 }
 
+THINKING_VIEW_LABELS = {
+    "collapsed": "Folded, labelled THINKING",
+    "preview": "Folded, with its first line showing",
+    "expanded": "Open, the whole block in the timeline",
+}
+
 
 class ClaudePage(Adw.PreferencesPage):
     """Everything that shapes how a session talks to Claude Code (ISSUE-032).
@@ -365,6 +371,28 @@ class ClaudePage(Adw.PreferencesPage):
         reasoning.add(self._conflict)
         self.add(reasoning)
 
+        # Its own group rather than a fourth row above, because it is the one
+        # setting on this page that changes what an open transcript draws
+        # instead of how the next session runs.
+        thinking_view = Adw.PreferencesGroup(
+            title="Thinking in the transcript",
+            description="Only matters when Thinking above returns text. A "
+                        "folded block keeps the timeline short; it also hides "
+                        "most of what the session is doing, since a run of "
+                        "tool calls has its reasoning here and not in a "
+                        "message.",
+        )
+        self._thinking_view = Adw.ComboRow(
+            title="Show thinking",
+            model=Gtk.StringList.new(
+                [THINKING_VIEW_LABELS[v] for v in agent_options.THINKING_VIEWS]),
+        )
+        self._thinking_view.set_selected(
+            agent_options.THINKING_VIEWS.index(agent_options.thinking_view(config)))
+        self._thinking_view.connect("notify::selected", self._on_thinking_view_changed)
+        thinking_view.add(self._thinking_view)
+        self.add(thinking_view)
+
         sessions = Adw.PreferencesGroup(
             title="New sessions",
             description="A registered project's own default_permission_mode "
@@ -495,6 +523,12 @@ class ClaudePage(Adw.PreferencesPage):
             return
         self._save("thinking", agent_options.THINKING_MODES[combo.get_selected()])
         self._refresh_conflict()
+
+    def _on_thinking_view_changed(self, combo, _param) -> None:
+        if self._loading:
+            return
+        self._save("thinking_view", agent_options.THINKING_VIEWS[combo.get_selected()])
+        self.emit("toast", "Reload a transcript to see the change")
 
     def _on_mode_changed(self, combo, _param) -> None:
         if self._loading:

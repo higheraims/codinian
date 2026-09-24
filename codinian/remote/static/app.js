@@ -49,7 +49,8 @@
   // failed fetch falls back to the same defaults the backend uses rather than
   // showing nothing: a page that cannot reach /api/prefs can still reach the
   // WebSocket, and the footer is not worth blanking over.
-  let displayPrefs = { show_plan_usage: true, show_cost: false };
+  let displayPrefs = { show_plan_usage: true, show_cost: false,
+                       thinking_view: 'preview' };
 
   async function loadDisplayPrefs() {
     try {
@@ -62,6 +63,9 @@
     renderSessionTotals();
     renderPlanUsage();
     renderContextUsage();
+    // The fetch can land after a transcript has drawn, so blocks built against
+    // the fallback are brought into line rather than left a setting behind.
+    applyThinkingView();
   }
   const approvalJumpEl = document.getElementById('approval-jump');
 
@@ -2725,15 +2729,12 @@
         // `text`). Only Claude emits extended-thinking blocks, so it is
         // grouped into the assistant bubble stream.
         const group = ensureBubble('assistant', target);
-        // Collapsed by default, as docs/transcript-protocol.md specifies: a
-        // long block of reasoning between two tool calls pushes the turn
-        // itself off the screen. The summary line opens it when you want it.
-        const details = h('details', { class: 'thinking-block' });
-        details.appendChild(h('summary', { class: 'thinking-summary' }, 'Thinking'));
-        const body = h('div', { class: 'thinking-body' });
-        body.appendChild(renderMarkdown(ev.text, 'is-thinking'));
-        details.appendChild(body);
-        group.appendChild(details);
+        // How much of it shows is the user's setting (ISSUE-077). Folding
+        // all of it keeps a long block of reasoning from pushing the turn off
+        // the screen, but a run of tool calls carries its narration here and
+        // not in a message, so folding all of it also hides what the session
+        // is doing.
+        group.appendChild(buildThinkingBlock(ev));
         break;
       }
 
@@ -3755,6 +3756,42 @@
       return `${subject} ${verb} ${label}`;
     });
     return h('div', { class: 'system-line' }, parts.join('  ·  '));
+  }
+
+  // The hint is always built and always carries the first line, so switching
+  // the setting is a matter of showing it rather than rebuilding the
+  // transcript. Only `expanded` can force the fold open, which is an attribute
+  // rather than something CSS can reach.
+  function buildThinkingBlock(ev) {
+    const details = h('details', { class: 'thinking-block' });
+    const summary = h('summary', { class: 'thinking-summary' },
+                      [h('span', { class: 'thinking-label' }, 'Thinking')]);
+    const hint = firstMeaningfulLine(ev.text);
+    if (hint) summary.appendChild(h('span', { class: 'thinking-hint' }, hint));
+    details.appendChild(summary);
+    const body = h('div', { class: 'thinking-body' });
+    body.appendChild(renderMarkdown(ev.text, 'is-thinking'));
+    details.appendChild(body);
+    applyThinkingViewTo(details);
+    return details;
+  }
+
+  function applyThinkingViewTo(details) {
+    const view = displayPrefs.thinking_view || 'preview';
+    const hint = details.querySelector(':scope > .thinking-summary > .thinking-hint');
+    // The body says the same first line once the block is open, so the hint is
+    // a stand-in for the body rather than a heading over it.
+    if (hint) hint.hidden = view !== 'preview';
+    if (view === 'expanded') details.open = true;
+  }
+
+  // Re-applied only when the setting arrives late. It does not close a block
+  // the reader opened: `expanded` sets open, and the other two leave whatever
+  // state the fold is in alone.
+  function applyThinkingView() {
+    for (const el of transcriptEl.querySelectorAll('.thinking-block')) {
+      applyThinkingViewTo(el);
+    }
   }
 
   function buildContextBlock(text, label) {

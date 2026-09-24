@@ -787,9 +787,9 @@ button { cursor: pointer; }
 }
 
 /* Thinking reads as reasoning, not as a footnote: a rule down the left rather
-   than a dashed box, and the same serif as a message a shade lighter. It is
-   collapsed by default (see the `thinking` case in app.js) and the summary
-   line is how you open it. */
+   than a dashed box, and the same serif as a message a shade lighter. How much
+   of it shows without a click is the Show thinking setting (ISSUE-077); the
+   summary line opens it either way. */
 .thinking-block {
   border-left: 2px solid var(--border);
   background: transparent;
@@ -805,12 +805,24 @@ button { cursor: pointer; }
   cursor: pointer;
   user-select: none;
   list-style: none;
+  min-width: 0;
   font-size: .68rem;
-  text-transform: uppercase;
-  letter-spacing: .06em;
   color: var(--text-faint);
 }
 .thinking-summary:hover { color: var(--text-muted); }
+.thinking-label { text-transform: uppercase; letter-spacing: .06em; flex-shrink: 0; }
+/* The reasoning's first line, so a folded block says what it is thinking about
+   rather than only that it is. Prose, so it drops the label's uppercase and
+   takes the same size as the body it stands in for. */
+.thinking-hint {
+  min-width: 0;
+  font-size: .78rem;
+  font-family: var(--font-serif);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .thinking-summary::-webkit-details-marker { display: none; }
 .thinking-summary::before {
   content: "\25B8";

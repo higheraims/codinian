@@ -149,10 +149,30 @@ def test_display_prefs_default_to_plan_usage_only():
     # A subscription's constraint is the plan's windows, not dollars.
     assert agent_options.display_prefs({}) == {"show_plan_usage": True,
                                                "show_cost": False,
-                                               "show_cache_tokens": False}
+                                               "show_cache_tokens": False,
+                                               "thinking_view": "preview"}
 
 
 def test_display_prefs_coerce_to_booleans():
     prefs = agent_options.display_prefs({"show_cost": 1, "show_plan_usage": ""})
     assert prefs["show_cost"] is True
     assert prefs["show_plan_usage"] is False
+
+
+def test_thinking_view_defaults_to_preview():
+    # Folding all of it was the old behaviour and hid most of what a session
+    # doing a run of tool calls was doing.
+    assert agent_options.thinking_view({}) == "preview"
+
+
+def test_thinking_view_rejects_a_value_it_does_not_know():
+    assert agent_options.thinking_view({"thinking_view": "open"}) == "preview"
+    assert agent_options.thinking_view({"thinking_view": "expanded"}) == "expanded"
+
+
+def test_thinking_view_is_not_the_thinking_mode():
+    # Two settings, one word. Asking the model for no reasoning text says
+    # nothing about how a transcript draws the reasoning it does have.
+    config = {"thinking": "disabled", "thinking_view": "expanded"}
+    assert agent_options.thinking(config) == "disabled"
+    assert agent_options.thinking_view(config) == "expanded"
