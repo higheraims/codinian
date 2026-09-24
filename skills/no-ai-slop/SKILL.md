@@ -9,22 +9,44 @@ Derived from Louis Rossmann's [no_ai_slop_writing_rules](https://github.com/real
 
 ## Rule 1: No em dashes
 
-The em dash `—` (U+2014) is banned in prose, and so is an en dash `–` (U+2013) used the same
-way, as a parenthetical or sentence-level break. Use a comma, a semicolon, a period,
-parentheses, or restructure the sentence.
+Do not write `—` (U+2014), or an en dash `–` (U+2013) used the same way, as a parenthetical or
+sentence-level break. Use a hyphen, a comma, a semicolon, parentheses, or a new sentence.
 
-This is a tell, not a matter of taste. Nobody types `—` on a keyboard, so its
-presence is one of the clearest markers of machine-written text.
+**The reason is provenance, not taste.** There is no em dash key. Someone writing at a keyboard
+produces a hyphen, or two of them. An `—` reaches a page by one of three routes: a word
+processor autocorrected it, a typesetter or an editor chose it, or a model trained on edited
+print reached for it. In anything meant to read as typed, only the third is plausible. That is
+what makes the character a reliable tell, and why it reads as unprofessional in work going out
+under a person's name.
+
+**Everything an agent is normally asked to write is the typed register**, so treat the rule as
+unconditional. Code comments and docstrings, commit messages, PR bodies, issue text, READMEs
+and docs kept in a repo, email, chat, terminal output. A README is no exception: look at how
+anyone else on GitHub writes one.
+
+**The exception is real and almost never commissioned.** Finished copy that a person sets and
+an editor reads, an article, a printed or PDF report, a book, takes ordinary typography, and an
+em dash there needs no apology. That is worth knowing only so the rule is not mistaken for the
+character being wrong everywhere, which is what leads to hunting them down in other people's
+files. If a piece genuinely looks like set, edited copy, ask rather than assume. Length and
+formality do not make it so.
+
+- WRONG: "The policy — which affected millions — was later reversed."
+- RIGHT: "The policy affected millions of devices. The company reversed it in December 2017."
 
 **A plain hyphen `-` is what a human types, and it is fine**, including as a separator
 ("Fedora 44 - KDE", "run the check - it takes a second"). Do not avoid the hyphen key trying
 to comply with this rule; that overcorrection is what this section exists to prevent.
 
-- WRONG: "The policy — which affected millions — was later reversed."
-- RIGHT: "The policy affected millions of devices. The company reversed it in December 2017."
-
 An en dash inside a numeric range ("1941–2026", "pp. 118–119") is ordinary typography rather
 than slop. Leave it, and follow whatever the surrounding project already does.
+
+**Do not go hunting.** This rule governs what you write, in the turn you are writing it. An em
+dash already sitting in a file is not a defect to report, and noticing one is not a reason to
+offer a cleanup. Change one only in a line you are editing for some other reason, or when you
+are asked to. The converse holds too, and matters more: an em dash already in a file is not
+permission to add another, because in most repos it is previous agent output rather than a
+house style. Check the added lines, not the file: `git diff -U0 | grep '^+' | grep '—'`.
 
 **Do not swap in a colon mechanically.** A colon is syntax in structured text, not just
 punctuation. Rewriting `title — scope fixed by measurement` as `title: scope fixed by
@@ -111,7 +133,7 @@ Whenever you say A differs from B, name the part, the version, the date, the mec
 
 Run this pass on every piece of prose before you hand it back. The full banned lists are in `references/ai-writing-detection.md`; check against them directly.
 
-1. Search for the em dash `—` and for an en dash `–` used as a prose break; remove every one (Rule 1). Leave plain hyphens and numeric-range en dashes alone.
+1. Remove every em dash from text **you wrote this turn**, and every en dash used as a prose break (Rule 1). Do not touch em dashes elsewhere in the file. Leave plain hyphens and numeric-range en dashes alone.
 2. Scan for banned verbs (delve, leverage, utilize, foster, bolster, underscore, unveil, streamline) and replace with plain equivalents.
 3. Scan for banned adjectives and intensifiers (robust, comprehensive, pivotal, seamless, significantly, extremely, truly) and cut or replace.
 4. Scan for banned transitions and openers (Furthermore, Moreover, That being said, In today's world, It's worth noting that).
