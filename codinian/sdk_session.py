@@ -280,6 +280,11 @@ class SdkSession:
         # timer rather than per token (ISSUE-033).
         self._delta_buf: dict[int, list[str]] = {}
         self._delta_task: asyncio.Task | None = None
+        # The context reading runs beside the message loop rather than inside
+        # it (ISSUE-073). One at a time, with `_context_force` remembering a
+        # turn boundary that arrived while one was already running.
+        self._context_task: asyncio.Task | None = None
+        self._context_force = False
         # Filled at connect; see start(). Empty when the CLI did not answer.
         self._server_info: dict = {}
         # Protocol capabilities the CLI advertises, from the init message
@@ -396,6 +401,8 @@ class SdkSession:
             self._name_task.cancel()
         if self._delta_task:
             self._delta_task.cancel()
+        if self._context_task:
+            self._context_task.cancel()
         if self._run_task:
             self._run_task.cancel()
         if self._read_task:
@@ -489,13 +496,17 @@ class SdkSession:
                         "message": f"could not render one message: {exc}"}})
                 if isinstance(msg, ResultMessage):
                     self._end_turn()
-                    await self._read_context_usage(force=True)
+                    self._schedule_context_read(force=True)
                 else:
                     # Mid-turn, so a turn that fills the window does not reach
                     # its end before anyone hears about it (ISSUE-069). Rate
                     # limited by the clock, not by the message, because a turn
                     # can emit hundreds of these in a second.
-                    await self._read_context_usage()
+                    #
+                    # Scheduled, never awaited: the answer comes back down this
+                    # same stream, so a loop that waits here is not reading the
+                    # messages the answer is queued behind (ISSUE-073).
+                    self._schedule_context_read()
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # surface, do not swallow
@@ -1111,6 +1122,35 @@ class SdkSession:
                         "reason": reason, "decided_by": decided_by})
         return True
 
+    def _schedule_context_read(self, force: bool = False) -> None:
+        """Start a context reading beside the message loop (ISSUE-073).
+
+        One at a time, because two in flight would race each other to the
+        footer and double the control traffic a busy turn generates. A turn
+        boundary that lands while one is already running sets `_context_force`
+        instead of being dropped, and the runner takes a second pass for it:
+        that reading is the figure the session rests at until someone types
+        again, so it is the one worth not losing.
+        """
+        if self._closed:
+            return
+        if force:
+            self._context_force = True
+        if self._context_task is not None and not self._context_task.done():
+            return
+        self._context_task = asyncio.create_task(self._run_context_reads())
+
+    async def _run_context_reads(self) -> None:
+        """Drain `_context_force`, then stop. See `_schedule_context_read`."""
+        try:
+            while not self._closed:
+                force, self._context_force = self._context_force, False
+                await self._read_context_usage(force)
+                if not self._context_force:
+                    return
+        except asyncio.CancelledError:
+            raise
+
     async def _read_context_usage(self, force: bool = False) -> None:
         """Ask how full the context window is, and say so (ISSUE-065).
 
@@ -1126,15 +1166,21 @@ class SdkSession:
         rests at until someone types again. Everything else waits out
         `CONTEXT_READ_INTERVAL` (ISSUE-069).
 
-        Awaited in the message loop rather than spawned beside it, so two of
-        these can never be in flight at once. The cost is that a CLI which
-        accepted the request and never answered holds the transcript up for as
-        long as it takes to give up, which is the SDK's own 60 seconds. No
-        timeout is imposed on top of that: `_send_control_request` drops its
-        entry from `pending_control_responses` when its own `fail_after` fires,
-        and cancelling it from outside skips that cleanup and leaks the entry
-        instead. The same await has ended every turn since ISSUE-065 without
-        stalling one.
+        Run beside the message loop, never inside it. Awaiting it there
+        deadlocked against the stream it reads from: the answer arrives behind
+        whatever messages are already queued, so a loop waiting for it is not
+        reading the messages it is queued behind, and the request can only time
+        out. Measured at 60.03s against a 25-second backlog where an unblocked
+        loop answers in under a second. One session spent an hour delivering a
+        finished turn at one message a minute that way (ISSUE-073).
+
+        `_schedule_context_read` is what now keeps one of these in flight at a
+        time, which is the property awaiting it here used to provide. No
+        timeout is imposed on top of the SDK's own 60 seconds:
+        `_send_control_request` drops its entry from
+        `pending_control_responses` when its own `fail_after` fires, and
+        cancelling it from outside skips that cleanup and leaks the entry
+        instead.
         """
         client = self._client
         if client is None or self._closed:

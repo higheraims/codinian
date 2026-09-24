@@ -621,3 +621,140 @@ async def test_a_suppressed_reading_is_still_put_to_the_flush_check(monkeypatch)
 
     assert len(readings(manager)) == 1
     assert len(asked) == 2
+
+
+# --------------------------------- the reading runs beside the loop (ISSUE-073)
+
+class SlowContextClient(FakeContextClient):
+    """A CLI that cannot answer until something else drains the stream.
+
+    Stands in for the real deadlock: `get_context_usage` waits on `released`,
+    which only the message loop can set, so anything that waits for the answer
+    instead of reading messages waits forever.
+    """
+
+    def __init__(self, *answers):
+        super().__init__(*answers)
+        self.released = asyncio.Event()
+        self.entered = asyncio.Event()
+
+    async def get_context_usage(self):
+        self.entered.set()
+        await self.released.wait()
+        return await super().get_context_usage()
+
+
+@async_test
+async def test_scheduling_a_reading_does_not_wait_for_the_answer():
+    # The regression. Before ISSUE-073 this was awaited in the message loop, so
+    # a CLI that had not answered yet stopped the loop from reading the
+    # messages its answer was queued behind.
+    manager = SessionManager()
+    manager.add(Session(id="s1", kind="sdk"))
+    session = make_session(manager)
+    session._loop = asyncio.get_running_loop()
+    client = SlowContextClient(usage(2))
+    session._client = client
+
+    session._schedule_context_read()          # must return, not block
+    await asyncio.wait_for(client.entered.wait(), timeout=1)
+    assert readings(manager) == []            # nothing emitted yet
+    client.released.set()
+    await asyncio.wait_for(session._context_task, timeout=1)
+    assert len(readings(manager)) == 1
+
+
+@async_test
+async def test_only_one_reading_is_in_flight_at_a_time():
+    manager = SessionManager()
+    manager.add(Session(id="s1", kind="sdk"))
+    session = make_session(manager)
+    session._loop = asyncio.get_running_loop()
+    client = SlowContextClient(usage(2))
+    session._client = client
+
+    for _ in range(5):
+        session._schedule_context_read()
+    await asyncio.wait_for(client.entered.wait(), timeout=1)
+    client.released.set()
+    await asyncio.wait_for(session._context_task, timeout=1)
+    assert client.asks == 1
+
+
+@async_test
+async def test_a_turn_boundary_during_a_reading_is_not_lost():
+    # A result that lands while a mid-turn reading is still out is the figure
+    # the session rests at, so it gets its own pass rather than being dropped.
+    manager = SessionManager()
+    manager.add(Session(id="s1", kind="sdk"))
+    session = make_session(manager)
+    session._loop = asyncio.get_running_loop()
+    client = SlowContextClient(usage(2), usage(9))
+    session._client = client
+
+    session._schedule_context_read()
+    await asyncio.wait_for(client.entered.wait(), timeout=1)
+    session._schedule_context_read(force=True)
+    client.released.set()
+    await asyncio.wait_for(session._context_task, timeout=1)
+    assert client.asks == 2
+    assert [r["percentage"] for r in readings(manager)] == [2, 9]
+
+
+@async_test
+async def test_a_closed_session_schedules_nothing():
+    manager = SessionManager()
+    manager.add(Session(id="s1", kind="sdk"))
+    session = context_session(manager, usage(2))
+    session._closed = True
+    session._schedule_context_read(force=True)
+    assert session._context_task is None
+    assert readings(manager) == []
+
+
+class StreamingContextClient(SlowContextClient):
+    """Hands the loop a fixed run of messages, and holds every context answer
+    until `released` is set. A loop that waits for those answers never reaches
+    the end of the run."""
+
+    def __init__(self, messages, *answers):
+        super().__init__(*answers)
+        self._messages = list(messages)
+        self.delivered = 0
+
+    async def receive_messages(self):
+        for m in self._messages:
+            self.delivered += 1
+            yield m
+        await asyncio.Event().wait()   # the stream stays open, as the real one does
+
+
+@async_test
+async def test_the_message_loop_does_not_wait_on_the_context_read():
+    # ISSUE-073 end to end: a context request that has not been answered must
+    # not hold up the messages behind it. Ten messages, none of the readings
+    # answered, and the loop still has to get through all ten.
+    manager = SessionManager()
+    manager.add(Session(id="s1", kind="sdk"))
+    session = make_session(manager)
+    session._loop = asyncio.get_running_loop()
+    msgs = [SystemMessage(subtype="status", data={"status": "requesting"})
+            for _ in range(10)]
+    client = StreamingContextClient(msgs, usage(2))
+    session._client = client
+
+    task = asyncio.create_task(session._read())
+    try:
+        for _ in range(200):                       # let the loop run
+            await asyncio.sleep(0)
+            if client.delivered == 10:
+                break
+        assert client.delivered == 10, (
+            f"loop stalled after {client.delivered} of 10 messages")
+        # The reading is a task of its own, so give it its turn before asking
+        # whether it started; the point is that the loop did not wait for it.
+        await asyncio.wait_for(client.entered.wait(), timeout=1)
+        assert readings(manager) == []             # asked, still unanswered
+    finally:
+        client.released.set()
+        task.cancel()
