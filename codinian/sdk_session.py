@@ -128,6 +128,30 @@ AGENT_TOOL = "Agent"
 # bytes and a fifth of the packets, and still fast enough to read as live.
 DELTA_FLUSH_SECONDS = 0.1
 
+# How much of one CLI message to buffer before giving up on it (ISSUE-078).
+#
+# The CLI writes NDJSON, one message to a line, and a tool result carrying a
+# picture puts the whole image on that line as base64. It puts it there twice:
+# once in `message.content[].source.data`, and again in
+# `toolUseResult.file.base64`. A `Read` of a 319 KB PNG mockup came to a
+# 1,290,865 byte line, against the SDK's default ceiling of 1,048,576.
+#
+# What that costs is the session, not the message. The SDK reads stdout in a
+# task of its own, and the ceiling is enforced by a raise inside it, so the task
+# dies and the message stream closes for good. `_read` then has nothing left to
+# read and calls `_fail`. The `claude` process is untouched by any of this and
+# carries on: in the session that found this, its transcript kept growing for
+# thirteen seconds after Codinian had put the session in ERROR.
+#
+# 64 MiB because the largest honest line is a `Read` of a PDF, which returns up
+# to twenty pages as images in one tool result. At the 645 KB of base64 one page
+# of that mockup came to, doubled by the duplication, twenty pages is about
+# 26 MB. It stays a bound rather than becoming no limit at all: the producer is
+# a subprocess we launched rather than a network peer, so the number is here to
+# stop a runaway from eating memory, not to rule on how big a real message may
+# be.
+MAX_BUFFER_BYTES = 64 * 1024 * 1024
+
 # Tools `acceptEdits` covers. Anything outside this set is still put to the user
 # in that mode, which is the difference between it and `bypassPermissions`.
 EDIT_TOOLS = frozenset({"Edit", "MultiEdit", "Write", "NotebookEdit"})
@@ -348,6 +372,9 @@ class SdkSession:
             # nowhere to go.
             can_use_tool=self._can_use_tool,
             resume=self._resume,
+            # Images are the reason this is not left at the SDK's default
+            # (ISSUE-078); see MAX_BUFFER_BYTES.
+            max_buffer_size=MAX_BUFFER_BYTES,
             # System prompt, model, effort and thinking visibility, from the
             # user's settings (ISSUE-032). Read at start rather than held on
             # the session, so a change applies to the next session without a
