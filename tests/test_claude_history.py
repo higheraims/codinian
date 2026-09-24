@@ -473,3 +473,36 @@ def test_an_origin_that_is_not_a_record_is_left_alone(write_transcript):
     # must never be hidden because a field had an unexpected shape.
     write_transcript([user([{"type": "text", "text": "typed this"}], origin="user")])
     assert [d["source"] for d in user_texts()] == ["operator"]
+
+
+def test_a_turn_the_harness_marks_human_is_the_users_own(write_transcript):
+    # `origin` alone is not the marker. The CLI stamps a typed message
+    # `{"kind": "human"}`, and folding on the record's presence hid 21 real
+    # messages across the transcripts this was checked against (ISSUE-075).
+    write_transcript([user([{"type": "text", "text": "yes, commit it"}],
+                           origin={"kind": "human"})])
+    assert [d["source"] for d in user_texts()] == ["operator"]
+
+
+def test_a_slash_command_envelope_is_not_drawn_as_a_typed_turn(write_transcript):
+    # Running /model writes an isMeta caveat and then the envelope as its
+    # child. The caveat is dropped, so the envelope's parentage is the only
+    # thing left marking it (ISSUE-075).
+    write_transcript([
+        {"type": "user", "uuid": "caveat-1", "isMeta": True,
+         "cwd": "/home/ntyler/Projects/codinian",
+         "message": {"role": "user",
+                     "content": [{"type": "text",
+                                  "text": "<local-command-caveat>x</local-command-caveat>"}]}},
+        user([{"type": "text", "text": "<command-name>/model</command-name>"}],
+             uuid="cmd-1", parentUuid="caveat-1"),
+        user([{"type": "text", "text": "and now a real question"}],
+             uuid="typed-1", parentUuid="cmd-1"),
+    ])
+    assert [d["source"] for d in user_texts()] == ["injected", "operator"]
+
+
+def test_a_turn_descended_from_nothing_meta_is_left_alone(write_transcript):
+    write_transcript([user([{"type": "text", "text": "plain"}],
+                           uuid="u1", parentUuid="not-a-meta-uuid")])
+    assert [d["source"] for d in user_texts()] == ["operator"]

@@ -452,24 +452,46 @@ def subagent_meta(result) -> dict:
     return meta
 
 
-def _user_source(entry: dict) -> str:
+def _user_source(entry: dict,
+                 meta_uuids: frozenset[str] | set[str] = frozenset()) -> str:
     """Whether a user turn is something the person typed, for replay.
 
     `isMeta` marks the turns the CLI injects for itself, and those are dropped
-    before they reach here. It does not mark a background task reporting back:
-    that arrives as an ordinary user turn carrying `origin`, and calling it
-    `operator` put the raw `<task-notification>` envelope in the transcript as
-    if the user had typed it. One resumed session drew 21 of them, between 1 KB
-    and 15 KB each (ISSUE-074).
+    before they reach here. Two kinds of injected turn are not marked that way
+    and were reaching the transcript as if the user had typed them.
+
+    A background task reporting back is an ordinary user turn, marked only by
+    `origin: {"kind": "task-notification"}`. One resumed session drew 21 of
+    those, between 1 KB and 15 KB of `<task-notification>` each (ISSUE-074).
+
+    The `kind` is what decides, not the presence of the record. `human` is the
+    person typing, and treating any `origin` as injected hid 21 real messages
+    across the transcripts on this machine, including several in the session
+    that wrote this.
+
+    A slash command is the second. Running `/model` writes two records: an
+    `isMeta` caveat, then the `<command-name>` envelope as its child. The
+    caveat is dropped and the envelope is not, so the envelope was drawn as a
+    bubble. Its tell is the parent: it descends from a record dropped as meta,
+    which is what `meta_uuids` carries. Across the 151 transcripts on this
+    machine that identified all 14 command envelopes and none of the 812 real
+    user turns. `promptSource` was checked first and would have taken 27 typed
+    turns with it (ISSUE-075).
 
     The live path marks every injected user block `injected` already
     (`sdk_session._handle_block`), so this is replay agreeing with it, and a
     resumed transcript folds the same turns the live one folded.
     """
-    return "injected" if isinstance(entry.get("origin"), dict) else "operator"
+    origin = entry.get("origin")
+    if isinstance(origin, dict):
+        return "operator" if origin.get("kind") == "human" else "injected"
+    if entry.get("parentUuid") in meta_uuids:
+        return "injected"
+    return "operator"
 
 
-def _user_events(entry: dict, image_base: str = "", image_query: str = ""):
+def _user_events(entry: dict, image_base: str = "", image_query: str = "",
+                 meta_uuids: frozenset[str] | set[str] = frozenset()):
     # Turns the CLI injected itself -- skill bodies, hook output, system
     # reminders -- are marked isMeta and dropped by events_for_session before
     # they reach here. What that does not cover is a turn the harness generated
@@ -502,7 +524,7 @@ def _user_events(entry: dict, image_base: str = "", image_query: str = ""):
             text = block.get("text", "")
             if text.strip():
                 yield "text", {"role": "user", "text": text,
-                               "source": _user_source(entry)}
+                               "source": _user_source(entry, meta_uuids)}
 
 
 def _events_from(path: Path, limit: int, skip_sidechain: bool = True,
@@ -522,6 +544,7 @@ def _events_from(path: Path, limit: int, skip_sidechain: bool = True,
     file and this file is what the route reads.
     """
     events: list[tuple[str, dict]] = []
+    meta_uuids: set[str] = set()
     try:
         with path.open() as handle:
             for line in handle:
@@ -537,6 +560,14 @@ def _events_from(path: Path, limit: int, skip_sidechain: bool = True,
                 if entry.get("type") in _BOOKKEEPING_TYPES:
                     continue
                 if entry.get("isMeta"):
+                    # Kept, not merely skipped: a slash command's envelope is a
+                    # child of the caveat dropped here, and that parentage is
+                    # the only thing marking the envelope as injected
+                    # (ISSUE-075). The parent is always the earlier record, so
+                    # collecting them as the file is read is enough.
+                    meta_uuid = entry.get("uuid")
+                    if isinstance(meta_uuid, str):
+                        meta_uuids.add(meta_uuid)
                     continue
                 if skip_sidechain and entry.get("isSidechain"):
                     # A subagent's turns are not in this file (see
@@ -548,7 +579,8 @@ def _events_from(path: Path, limit: int, skip_sidechain: bool = True,
                 if entry.get("type") == "assistant":
                     events.extend(_assistant_events(entry))
                 elif entry.get("type") == "user":
-                    events.extend(_user_events(entry, image_base, image_query))
+                    events.extend(_user_events(entry, image_base, image_query,
+                                               meta_uuids))
                 elif (entry.get("type") == "system"
                       and entry.get("subtype") == "compact_boundary"):
                     # The one system record worth replaying. Everything after it

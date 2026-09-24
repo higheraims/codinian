@@ -53,6 +53,13 @@ The three messages actually typed are the ones without `origin`.
   `<command-name>/model</command-name>` in a bubble. It carries no `origin` and
   no `isMeta`, so nothing structural separates it from typed text yet. One
   event in the transcript this was found in, against 21 notifications.
+  Fixed in [[ISSUE-075]].
+
+- **The marker here was too broad and is corrected in [[ISSUE-075]].** Folding
+  on the presence of `origin` also folded `origin: {"kind": "human"}`, which is
+  what the CLI stamps on a message the user typed. Every value seen when this
+  was written was `task-notification`, so the field read as a flag; it is not
+  one.
 
 - The 21 envelopes were about 150 KB of document text, which also feeds the
   transcript size behind [[ISSUE-072]]. Not its cause, but a contributor.
