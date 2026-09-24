@@ -452,12 +452,28 @@ def subagent_meta(result) -> dict:
     return meta
 
 
+def _user_source(entry: dict) -> str:
+    """Whether a user turn is something the person typed, for replay.
+
+    `isMeta` marks the turns the CLI injects for itself, and those are dropped
+    before they reach here. It does not mark a background task reporting back:
+    that arrives as an ordinary user turn carrying `origin`, and calling it
+    `operator` put the raw `<task-notification>` envelope in the transcript as
+    if the user had typed it. One resumed session drew 21 of them, between 1 KB
+    and 15 KB each (ISSUE-074).
+
+    The live path marks every injected user block `injected` already
+    (`sdk_session._handle_block`), so this is replay agreeing with it, and a
+    resumed transcript folds the same turns the live one folded.
+    """
+    return "injected" if isinstance(entry.get("origin"), dict) else "operator"
+
+
 def _user_events(entry: dict, image_base: str = "", image_query: str = ""):
     # Turns the CLI injected itself -- skill bodies, hook output, system
     # reminders -- are marked isMeta and dropped by events_for_session before
-    # they reach here, so any user text at this point is what the user typed.
-    # A live session marks the injected ones `injected` instead and folds them
-    # into a collapsed card (ISSUE-026); replay simply omits them.
+    # they reach here. What that does not cover is a turn the harness generated
+    # on the user's behalf, which `_user_source` sorts out.
     for block in _blocks(entry):
         if not isinstance(block, dict):
             continue
@@ -485,7 +501,8 @@ def _user_events(entry: dict, image_base: str = "", image_query: str = ""):
         elif kind == "text":
             text = block.get("text", "")
             if text.strip():
-                yield "text", {"role": "user", "text": text, "source": "operator"}
+                yield "text", {"role": "user", "text": text,
+                               "source": _user_source(entry)}
 
 
 def _events_from(path: Path, limit: int, skip_sidechain: bool = True,

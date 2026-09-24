@@ -429,3 +429,47 @@ def test_a_subagent_transcript_keeps_its_own_sidechain_turns(write_transcript):
 def test_a_session_with_no_transcript_seeds_nothing():
     assert claude_history.events_for_session("99999999-0000-0000-0000-000000000000") == []
     assert claude_history.subagent_events(SESSION, "abc123") == []
+
+
+# ------------------------------- what the user typed, on replay (ISSUE-074)
+
+def user_texts(session_id=SESSION):
+    return [d for kind, d in claude_history.events_for_session(session_id)
+            if kind == "text" and d.get("role") == "user"]
+
+
+def test_a_typed_turn_replays_as_the_users_own(write_transcript):
+    write_transcript([user([{"type": "text", "text": "Address issues 46, 47, 48"}])])
+    assert [d["source"] for d in user_texts()] == ["operator"]
+
+
+def test_a_task_notification_is_not_drawn_as_something_the_user_typed(
+        write_transcript):
+    # The whole of ISSUE-074. A background agent reporting back is an ordinary
+    # user turn as far as the transcript is concerned, and it is not marked
+    # isMeta, so before this it was labelled `operator` and its raw XML
+    # envelope was pasted into the transcript verbatim.
+    write_transcript([
+        user([{"type": "text", "text": "Address issues 46, 47, 48"}]),
+        user([{"type": "text",
+               "text": "<task-notification>\n<task-id>a9d0</task-id>\n"
+                       "<status>completed</status>\n</task-notification>"}],
+             origin={"kind": "task-notification"}),
+    ])
+    assert [d["source"] for d in user_texts()] == ["operator", "injected"]
+
+
+def test_any_harness_generated_origin_folds_not_only_task_notifications(
+        write_transcript):
+    # `origin` is the marker, not the one kind of it seen so far, so a kind
+    # nobody has met yet does not arrive as a wall of XML.
+    write_transcript([user([{"type": "text", "text": "<whatever/>"}],
+                           origin={"kind": "something-later"})])
+    assert [d["source"] for d in user_texts()] == ["injected"]
+
+
+def test_an_origin_that_is_not_a_record_is_left_alone(write_transcript):
+    # Defensive only: a scalar `origin` is not the harness marker, and a turn
+    # must never be hidden because a field had an unexpected shape.
+    write_transcript([user([{"type": "text", "text": "typed this"}], origin="user")])
+    assert [d["source"] for d in user_texts()] == ["operator"]
