@@ -136,6 +136,14 @@ def drive_input(port: int, cdp_port: int, moves: int, done: threading.Event) -> 
         done.set()
 
 
+def rgba_hex(colour) -> str:
+    """A `Gdk.RGBA` as `#rrggbb`, with the alpha appended when it is not opaque,
+    so a colour can be compared against the stylesheet's own notation."""
+    channels = (colour.red, colour.green, colour.blue)
+    hexed = "#" + "".join(f"{round(v * 255):02x}" for v in channels)
+    return hexed if colour.alpha == 1.0 else f"{hexed}@{colour.alpha:g}"
+
+
 def main() -> int:
     display, port = free_display()
     broadway = subprocess.Popen(["gtk4-broadwayd", f":{display}"],
@@ -151,9 +159,10 @@ def main() -> int:
 
     try:
         import gi
+        gi.require_version("Adw", "1")
         gi.require_version("Gtk", "4.0")
         gi.require_version("WebKit", "6.0")
-        from gi.repository import GLib, Gtk, WebKit
+        from gi.repository import Adw, GLib, Gtk, WebKit
 
         sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         from codinian.window import CodinianWindow
@@ -174,7 +183,17 @@ def main() -> int:
         window = Gtk.Window(title="codinian probe", default_width=600,
                             default_height=400)
         webview = WebKit.WebView()
+        # What the view would paint if nobody told it otherwise, recorded
+        # before the call that tells it (ISSUE-079).
+        default_bg = rgba_hex(webview.get_background_color())
         window.set_child(webview)
+
+        # The dark palette is the one the flash was worth fixing for, so force
+        # it and ask the real method what it puts on the view.
+        Adw.init()
+        Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
+        CodinianWindow._apply_pane_background(None, webview)
+        pane_bg = rgba_hex(webview.get_background_color())
 
         # The real controller from the real module, installed the way
         # _build_webview_pane installs it.
@@ -226,6 +245,8 @@ def main() -> int:
             "realized": window.get_realized(),
             "backend": type(window.get_display()).__name__,
             "zoom_level": webview.get_zoom_level(),
+            "default_pane_bg": default_bg,
+            "dark_pane_bg": pane_bg,
             "moves_sent": MOUSE_MOVES,
             "events": seen["events"],
             "signal_arg_none": seen["signal_arg_none"],

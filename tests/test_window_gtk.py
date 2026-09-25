@@ -11,6 +11,9 @@ installed on a genuine `WebKit.WebView`, inside a genuine
 `Gtk.ApplicationWindow`, with a pointer moved across it by a browser. The setup
 and the reason it is a child process are in `tests/gtk_probe.py`.
 
+The same view answers the other question that needs a real one: what colour a
+pane paints before its page has drawn, which is ISSUE-079.
+
 It costs about ten seconds and needs `gtk4-broadwayd` and `chromium-browser`,
 so it skips rather than fails where either is missing, and carries the `gtk`
 mark for `-m 'not gtk'`.
@@ -103,6 +106,21 @@ def test_the_controller_can_be_asked_for_the_event_instead(probe):
     # typed event for every event the signal delivered as None, which is what
     # makes the workaround a workaround rather than a guess.
     assert probe["current_event_typed"] == probe["events"]
+
+
+def test_a_pane_is_white_until_it_is_told_otherwise(probe):
+    # The reason ISSUE-079 exists. A WebKitGTK view paints this colour for as
+    # long as its page has not drawn, and a pane is built on the click that
+    # first selects it, so the quarter second the page takes to load was a
+    # quarter second of white in the middle of a dark window.
+    assert probe["default_pane_bg"] == "#ffffff"
+
+
+def test_a_pane_is_painted_the_palette_it_is_loading(probe):
+    # The fix, measured on a real view rather than on the string that feeds it:
+    # --bg from the dark half of remote/static/styles.css, which is what the
+    # page paints once it has drawn.
+    assert probe["dark_pane_bg"] == "#16171d"
 
 
 def test_a_pane_is_left_at_its_own_zoom_level(probe):

@@ -55,6 +55,25 @@ def query_value(config: dict) -> str | None:
     return None if value == DEFAULT_THEME else value
 
 
+# `--bg` from each half of `remote/static/styles.css`, the two palettes the
+# pages ship. Repeated here because a pane has to be told what colour to paint
+# before the stylesheet that would say so has arrived. A `WebKit.WebView` left
+# alone paints opaque white, and a pane is built on the click that first selects
+# it, so the quarter second its page took to load was a quarter second of white
+# in the middle of a dark window (ISSUE-079).
+PANE_BACKGROUNDS = {"light": "#f5f5f7", "dark": "#16171d"}
+
+
+def pane_background(dark: bool) -> str:
+    """The colour a pane should show for as long as its page has not drawn.
+
+    Takes the answer rather than the config, because "system" can only be
+    resolved by asking libadwaita what the desktop is doing, and the caller is
+    already holding a StyleManager that knows.
+    """
+    return PANE_BACKGROUNDS["dark" if dark else "light"]
+
+
 def apply_to_shell(config: dict) -> None:
     """Point libadwaita at the stored choice.
 

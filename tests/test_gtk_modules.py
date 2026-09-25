@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import importlib
 import os
+import pathlib
+import re
 import subprocess
 import sys
 from datetime import datetime, timedelta
@@ -104,6 +106,28 @@ def test_saving_a_theme_nobody_knows_stores_the_default_instead(monkeypatch):
     config = {}
     assert theme.save(config, "solarized") == "system"
     assert config["theme"] == "system"
+
+
+@pytest.mark.parametrize("dark,expected", [(True, "#16171d"), (False, "#f5f5f7")])
+def test_a_pane_is_painted_the_palette_it_is_loading(dark, expected):
+    assert theme.pane_background(dark) == expected
+
+
+@pytest.mark.parametrize("selector,dark", [(":root", False),
+                                          (':root[data-theme="dark"]', True)])
+def test_the_pane_colours_are_the_ones_the_pages_paint(selector, dark):
+    """Pin the copy in theme.py to the stylesheet it was copied from.
+
+    The value has to be in both places: the page gets it from `--bg`, and the
+    view has to be told it before the stylesheet carrying `--bg` has arrived.
+    A palette edited in one place and not the other would put ISSUE-079's flash
+    back, in a colour nobody chose.
+    """
+    css = (pathlib.Path(theme.__file__).parent
+           / "remote" / "static" / "styles.css").read_text()
+    block = css.split(selector + " {", 1)[1].split("}", 1)[0]
+    declared = re.search(r"--bg:\s*(#[0-9a-f]{6})", block).group(1)
+    assert theme.pane_background(dark) == declared
 
 
 # ------------------------------------------------------ how long ago it was

@@ -872,8 +872,10 @@ class CodinianWindow(Adw.ApplicationWindow):
         webview = WebKit.WebView()
         webview.set_vexpand(True)
         webview.set_hexpand(True)
-        # Before the load rather than after it, so a pane is never briefly
-        # drawn at a size the user did not choose (ISSUE-070).
+        # Both of these before the load rather than after it, so a pane is never
+        # briefly drawn in a colour or at a size the user did not choose
+        # (ISSUE-079, ISSUE-070).
+        self._apply_pane_background(webview)
         webview.set_zoom_level(config_module.pane_zoom(self._config))
         webview._load_attempts = 0
         webview.connect("load-failed", self._on_pane_load_failed)
@@ -884,6 +886,23 @@ class CodinianWindow(Adw.ApplicationWindow):
         self._redirect_pinch_to_zoom(webview)
         webview.load_uri(url)
         return webview
+
+    def _apply_pane_background(self, webview: WebKit.WebView) -> None:
+        """Paint the pane the page's own background, so that switching to one
+        is the same colour throughout.
+
+        A pane is built on the click that first selects it, which puts an empty
+        WebKitGTK view on screen for the quarter second its page takes to load,
+        and a view that has not been told otherwise paints that white. The
+        StyleManager is asked rather than the stored theme because it answers
+        for all three values at once: "system" resolves to whatever the desktop
+        is set to, and light and dark were forced onto it by
+        `theme.apply_to_shell` (ISSUE-079).
+        """
+        colour = Gdk.RGBA()
+        colour.parse(theme_module.pane_background(
+            Adw.StyleManager.get_default().get_dark()))
+        webview.set_background_color(colour)
 
     def _redirect_pinch_to_zoom(self, webview: WebKit.WebView) -> None:
         """Spend a touchpad pinch on the pane's zoom level instead of letting
@@ -1407,6 +1426,12 @@ class CodinianWindow(Adw.ApplicationWindow):
         # A WebKitGTK pane takes its palette from a data-theme attribute stamped
         # at load time from the URL, so it cannot be restyled in place. Reload
         # every pane with the new theme= parameter.
+        #
+        # The colour behind the page is not stamped into the page and so does
+        # not follow it over the reload; put the new palette's on each view as
+        # well, or the next load starts by flashing the old one (ISSUE-079).
+        for webview in self._panes():
+            self._apply_pane_background(webview)
         self._reload_panes()
 
     def _on_pane_zoom_changed(self, _view, level: float) -> None:
