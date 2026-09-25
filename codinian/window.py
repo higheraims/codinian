@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import signal
@@ -25,6 +26,12 @@ STUCK_SECS = 1800  # 30 min without output → stuck
 # Retry budget for a transcript pane whose server is not listening yet.
 PANE_LOAD_RETRIES = 10
 PANE_RETRY_MS = 500
+
+# The channel a pane asks the host for something on, reached from the page as
+# `window.webkit.messageHandlers.codinian.postMessage(...)`. One channel
+# carrying a JSON payload rather than a handler registered per action, so adding
+# a request later is a branch in `_on_pane_request` and not more wiring.
+PANE_BRIDGE = "codinian"
 
 # How far a pinch may take a pane's zoom level. Below 0.5 the transcript is
 # unreadable; above 3.0 the composer no longer fits the pane.
@@ -116,6 +123,31 @@ def _positive_int(value, fallback: int) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         return fallback
     return value if value > 0 else fallback
+
+
+def _pane_request(raw) -> tuple[str, str] | None:
+    """The (action, session id) a pane asked the host for, or None if the
+    message is not one to act on.
+
+    Separate from the window because the parsing is the part that can go wrong:
+    the payload is built by our own page but arrives over WebKit as whatever
+    that page sent, from a process this one does not control.
+    """
+    if not isinstance(raw, str):
+        return None
+    try:
+        message = json.loads(raw)
+    except ValueError:
+        return None
+    if not isinstance(message, dict):
+        return None
+    action = message.get("action")
+    session_id = message.get("session")
+    if not isinstance(action, str) or not action:
+        return None
+    if not isinstance(session_id, str) or not session_id:
+        return None
+    return action, session_id
 
 
 def _app_mark() -> Gdk.Texture | None:
@@ -869,7 +901,12 @@ class CodinianWindow(Adw.ApplicationWindow):
         shared retry-on-load-failure behaviour: the server comes up a moment
         after the window does, so a pane opened in that gap must not be left
         sitting on a WebKit error page."""
-        webview = WebKit.WebView()
+        content = WebKit.UserContentManager()
+        content.register_script_message_handler(PANE_BRIDGE, None)
+        content.connect(f"script-message-received::{PANE_BRIDGE}",
+                        self._on_pane_request)
+        # Construct-only, so the manager cannot be attached after the fact.
+        webview = WebKit.WebView(user_content_manager=content)
         webview.set_vexpand(True)
         webview.set_hexpand(True)
         # Both of these before the load rather than after it, so a pane is never
@@ -886,6 +923,22 @@ class CodinianWindow(Adw.ApplicationWindow):
         self._redirect_pinch_to_zoom(webview)
         webview.load_uri(url)
         return webview
+
+    def _on_pane_request(self, _content, value) -> None:
+        """Do something a pane can ask for but cannot carry out itself.
+
+        A project pane lists the sessions running in its folder, and a click on
+        one of those cards means "show me that session". The page cannot do it:
+        following a link would replace the project with the full browser UI
+        inside a pane that has no way back out, and the session is in the GTK
+        sidebar already. So it asks, and this is where the sidebar answers.
+        """
+        request = _pane_request(value.to_string())
+        if request is None:
+            return
+        action, session_id = request
+        if action == "show-session":
+            self.focus_session(session_id)
 
     def _apply_pane_background(self, webview: WebKit.WebView) -> None:
         """Paint the pane the page's own background, so that switching to one
@@ -1659,9 +1712,20 @@ class CodinianWindow(Adw.ApplicationWindow):
 
     def focus_session(self, session_id: str) -> None:
         """Bring a session to the front. The entry point for a notification
-        click (the app's focus-session action)."""
+        click (the app's focus-session action) and for a click on a card in a
+        project pane's Sessions tab.
+
+        Nothing is switched for a session the sidebar has no row for: it was
+        closed between the click and here, its pane went with the row, and
+        asking the stack for it would only log a warning and leave the window on
+        a header naming a session that is gone. The window still comes forward,
+        because a notification was clicked either way.
+        """
         row = self._rows.get(session_id)
         if row is not None:
+            # The tab first: a selection on the tab behind is a highlight nobody
+            # can see (ISSUE-068).
+            self._show_sidebar_tab(SIDEBAR_SESSIONS)
             self._session_list.select_row(row)
-        self._show_session(session_id)
+            self._show_session(session_id)
         self.present()

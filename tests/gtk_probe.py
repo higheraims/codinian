@@ -37,12 +37,16 @@ import tempfile
 import threading
 import time
 import traceback
+import types
 import urllib.request
 
 BROADWAY_BASE_PORT = 8080
 MOUSE_MOVES = 30
 SETTLE_SECONDS = 2.0
 DEADLINE_SECONDS = 60.0
+# How long a page gets to load and post one message on the pane bridge. Nothing
+# waits out the whole budget: the loop stops as soon as the message arrives.
+BRIDGE_SECONDS = 15.0
 
 
 def wait_for_port(port: int, timeout: float = 10.0) -> bool:
@@ -136,6 +140,57 @@ def drive_input(port: int, cdp_port: int, moves: int, done: threading.Event) -> 
         done.set()
 
 
+# What a project pane's session card posts when it is clicked: the same
+# channel name and the same payload as `renderSessionsTab` in project.js,
+# because the point of asking a real WebKit view is that nothing here stands in
+# for the browser half.
+BRIDGE_HTML = """<script>
+  const host = window.webkit && window.webkit.messageHandlers
+    && window.webkit.messageHandlers.codinian;
+  if (host) host.postMessage(JSON.stringify(
+    {action: 'show-session', session: 'probe-session'}));
+</script>"""
+
+
+def check_pane_bridge(Gtk, GLib, CodinianWindow) -> dict:
+    """What reached the host when a page posted on the pane bridge.
+
+    A real pane, built by the real `_build_webview_pane`, so the registration
+    under test is the one the app ships rather than a copy of it. Only the
+    window beneath it is a stand-in: the handler's one job is to call
+    `focus_session`, and that needs a sidebar.
+
+    Done and torn down before the main window is presented, because broadway
+    draws every toplevel onto one page and a second one sitting under the
+    pointer would take the motion events the rest of the probe is counting.
+    """
+    focused: list[str] = []
+    host = types.SimpleNamespace(_config={}, focus_session=focused.append)
+    for name in ("_apply_pane_background", "_redirect_pinch_to_zoom",
+                 "_on_pane_load_failed", "_on_pane_create", "_on_pane_request"):
+        setattr(host, name, getattr(CodinianWindow, name).__get__(host))
+
+    webview = CodinianWindow._build_webview_pane(host, "about:blank")
+    window = Gtk.Window(title="codinian bridge probe", default_width=200,
+                        default_height=100)
+    window.set_child(webview)
+    window.present()
+    webview.load_html(BRIDGE_HTML, None)
+
+    context = GLib.MainContext.default()
+    deadline = time.time() + BRIDGE_SECONDS
+    while time.time() < deadline and not focused:
+        while context.pending():
+            context.iteration(False)
+        time.sleep(0.01)
+
+    window.set_child(None)
+    window.destroy()
+    while context.pending():
+        context.iteration(False)
+    return {"bridge_focused": focused}
+
+
 def rgba_hex(colour) -> str:
     """A `Gdk.RGBA` as `#rrggbb`, with the alpha appended when it is not opaque,
     so a colour can be compared against the stylesheet's own notation."""
@@ -179,6 +234,8 @@ def main() -> int:
                 traceback.format_exception(exc_type, exc, tb)))
 
         sys.excepthook = record
+
+        bridge = check_pane_bridge(Gtk, GLib, CodinianWindow)
 
         window = Gtk.Window(title="codinian probe", default_width=600,
                             default_height=400)
@@ -253,6 +310,7 @@ def main() -> int:
             "current_event_typed": seen["current_event_typed"],
             "types": sorted(seen["types"]),
             "handler_errors": handler_errors,
+            **bridge,
         }))
         return 0
     finally:

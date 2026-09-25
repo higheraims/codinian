@@ -11,8 +11,10 @@ installed on a genuine `WebKit.WebView`, inside a genuine
 `Gtk.ApplicationWindow`, with a pointer moved across it by a browser. The setup
 and the reason it is a child process are in `tests/gtk_probe.py`.
 
-The same view answers the other question that needs a real one: what colour a
-pane paints before its page has drawn, which is ISSUE-079.
+The same view answers the other two questions that need a real one: what colour
+a pane paints before its page has drawn, which is ISSUE-079, and whether a page
+posting on the pane bridge reaches the host handler that makes a project pane's
+session card open that session.
 
 It costs about ten seconds and needs `gtk4-broadwayd` and `chromium-browser`,
 so it skips rather than fails where either is missing, and carries the `gtk`
@@ -127,3 +129,12 @@ def test_a_pane_is_left_at_its_own_zoom_level(probe):
     # Nothing but a pinch may move it, and no pinch was sent. A controller that
     # acted on motion events would show up here.
     assert probe["zoom_level"] == 1.0
+
+
+def test_a_page_can_ask_the_host_to_show_a_session(probe):
+    # The one part of the pane bridge no unit test can reach: whether the
+    # handler `_build_webview_pane` registers is the one a page finds at
+    # `window.webkit.messageHandlers.codinian`, and whether what arrives on it
+    # is the string `_pane_request` expects. Both halves are the real ones, and
+    # the payload is the one project.js posts.
+    assert probe["bridge_focused"] == ["probe-session"]

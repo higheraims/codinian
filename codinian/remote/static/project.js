@@ -124,6 +124,18 @@
   const embedMode = initialParams.get('embed') === '1';
   if (embedMode) appEl.classList.add('embed-mode');
 
+  // The desktop host, when this page is a pane inside it. Absent in a browser,
+  // and absent in an older build of the app than the handler, so every caller
+  // treats a missing bridge as a no and does whatever it did before.
+  const host = (window.webkit && window.webkit.messageHandlers
+    && window.webkit.messageHandlers.codinian) || null;
+
+  function askHost(request) {
+    if (!host) return false;
+    host.postMessage(JSON.stringify(request));
+    return true;
+  }
+
   // Carried through syncUrl below rather than read again: the head script has
   // already stamped data-theme from it, but syncUrl rebuilds the query string
   // from scratch, so without this the choice is dropped on the first
@@ -1691,16 +1703,20 @@
     }
     for (const s of state.sessions) {
       // A link in the browser, where following it opens that session's
-      // transcript. Not in the desktop pane: navigating there would replace
-      // the project with the full sidebar-and-topbar UI inside a page that has
-      // no way back out, and the session is in the GTK sidebar already. Same
-      // reason resuming and starting do not leave either (see startSession).
+      // transcript. Not in the desktop pane: navigating there would replace the
+      // project with the full sidebar-and-topbar UI inside a page that has no
+      // way back out. There the card asks the host to select the session in the
+      // GTK sidebar instead, which lands on the same transcript with the rest of
+      // the app still around it. Same reason resuming and starting do not leave
+      // either (see startSession).
       const card = embedMode
         ? h('div', { class: 'session-card is-embed' })
         : h('a', { class: 'session-card', href: `/?session=${encodeURIComponent(s.id)}` });
       if (embedMode) {
-        card.addEventListener('click', () => notify(
-          `"${s.name || s.id}" is open in the sidebar.`, 'info'));
+        card.addEventListener('click', () => {
+          if (askHost({ action: 'show-session', session: s.id })) return;
+          notify(`"${s.name || s.id}" is open in the sidebar.`, 'info');
+        });
       }
       // The directory earns a line only when it is not the project root, the
       // same rule a history card follows. The status is on the stats line

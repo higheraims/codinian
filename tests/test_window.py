@@ -14,6 +14,7 @@ milliseconds and needs two programs this file does not (ISSUE-067).
 
 from __future__ import annotations
 
+import json
 import types
 
 import pytest
@@ -484,3 +485,111 @@ def test_the_shifted_and_keypad_spellings_are_bound_too():
     accels = CodinianWindow._ZOOM_ACCELS
     assert {"<Ctrl>equal", "<Ctrl>plus", "<Ctrl>KP_Add"} <= set(accels["zoom-in"])
     assert {"<Ctrl>minus", "<Ctrl>KP_Subtract"} <= set(accels["zoom-out"])
+
+
+# ----------------------------------------- what a pane may ask the host for
+
+# A project pane lists the sessions running in its folder, and a click on one
+# of those cards means "show me that session". The page cannot do it itself, so
+# it posts over the WebKit bridge and the sidebar answers. The string arrives
+# from a process this one does not control, so the parsing is where the
+# mistakes are.
+
+def request(payload):
+    return window._pane_request(json.dumps(payload))
+
+
+def test_a_pane_asking_for_a_session_is_understood():
+    assert request({"action": "show-session", "session": "s1"}) == ("show-session", "s1")
+
+
+def test_an_action_this_build_does_not_know_still_parses():
+    # Whether to act on it is the dispatcher's decision, not the parser's: a
+    # newer page talking to an older app must fail at one place, not two.
+    assert request({"action": "show-orbit", "session": "s1"}) == ("show-orbit", "s1")
+
+
+@pytest.mark.parametrize("raw", ["", "not json", "{", "[1, 2", None, b"{}"])
+def test_a_payload_that_is_not_json_text_is_ignored(raw):
+    assert window._pane_request(raw) is None
+
+
+@pytest.mark.parametrize("payload", [[], "show-session", 7, None, True])
+def test_json_that_is_not_an_object_is_ignored(payload):
+    assert request(payload) is None
+
+
+@pytest.mark.parametrize("payload", [
+    {"session": "s1"},                        # no action
+    {"action": "show-session"},               # no session
+    {"action": "", "session": "s1"},          # blank action
+    {"action": "show-session", "session": ""},  # blank session
+    {"action": "show-session", "session": 7},   # a session id is a string
+    {"action": ["show-session"], "session": "s1"},
+])
+def test_a_request_missing_either_half_is_ignored(payload):
+    assert request(payload) is None
+
+
+def fake_sidebar(rows=("s1",)):
+    """A stand-in `self` recording, in order, what reached the sidebar."""
+    events = []
+    fake = types.SimpleNamespace(
+        _rows={sid: f"row-{sid}" for sid in rows},
+        _sidebar_stack=types.SimpleNamespace(
+            get_visible_child_name=lambda: window.SIDEBAR_PROJECTS,
+            set_visible_child_name=lambda name: events.append(("tab", name)),
+        ),
+        _session_list=types.SimpleNamespace(
+            select_row=lambda row: events.append(("select", row))),
+        _show_session=lambda session_id: events.append(("show", session_id)),
+        present=lambda: events.append(("present",)),
+        events=events,
+    )
+    fake._show_sidebar_tab = lambda name: CodinianWindow._show_sidebar_tab(fake, name)
+    return fake
+
+
+def test_focusing_a_session_brings_its_tab_forward_before_selecting_it():
+    # A selection on the tab behind is a highlight nobody can see, and a click
+    # on a project pane's card always arrives with the Projects tab in front.
+    fake = fake_sidebar()
+    CodinianWindow.focus_session(fake, "s1")
+    assert fake.events == [
+        ("tab", window.SIDEBAR_SESSIONS),
+        ("select", "row-s1"),
+        ("show", "s1"),
+        ("present",),
+    ]
+
+
+def test_focusing_a_session_the_sidebar_has_no_row_for_switches_nothing():
+    # Closed between the click and here: its pane went with its row, so asking
+    # the stack for it would log a warning and leave the window on a header
+    # naming a session that is gone. The window still comes forward, because a
+    # notification was clicked either way.
+    fake = fake_sidebar(rows=())
+    CodinianWindow.focus_session(fake, "s1")
+    assert fake.events == [("present",)]
+
+
+def dispatch(raw):
+    fake = fake_sidebar()
+    focused = []
+    fake.focus_session = focused.append
+    CodinianWindow._on_pane_request(
+        fake, None, types.SimpleNamespace(to_string=lambda: raw))
+    return focused
+
+
+def test_a_show_session_request_focuses_that_session():
+    assert dispatch('{"action": "show-session", "session": "s1"}') == ["s1"]
+
+
+@pytest.mark.parametrize("raw", [
+    "nonsense",
+    '{"action": "show-orbit", "session": "s1"}',
+    '{"action": "show-session"}',
+])
+def test_a_request_this_build_cannot_honour_does_nothing(raw):
+    assert dispatch(raw) == []
