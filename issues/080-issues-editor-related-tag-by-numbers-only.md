@@ -3,7 +3,7 @@ id: ISSUE-080
 title: Issues editor - related tag by numbers only
 status: open
 type: feature
-area: gui
+area: tools
 created: 2026-09-25
 updated: 2026-09-25
 related: []
